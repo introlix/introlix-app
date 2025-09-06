@@ -38,11 +38,14 @@ Research paper ready: At the end, results can be transformed into a full researc
 
 
 # Multi Agent System
-**Planner Agent**: Prepares structured plans of action and generates initial questions to guide the research process.
+**Context Agent**: Asks questions to the user to get every piece of information about research.
 
+**Planner Agent**: Prepares structured plans of action and generates initial questions to guide the research process.
 
 **Explorer Agents (multiple in parallel)**: Search the web for relevant articles, papers, and sources. They also create summaries for users to quickly review and filter content.
 
 **Verifier Agent**: Acts as a fact-checker, validating information, cross-referencing multiple sources, and refining the data to ensure accuracy and reliability.
+
+**Knowledge Gap Agent**: An agent to verify knowledge gaps. If present it will run the explorer agent again by making new plans from Planner Agent.
 
 **Researcher Agent**: Conducts in-depth analysis and synthesizes findings into high-quality research outputs.
