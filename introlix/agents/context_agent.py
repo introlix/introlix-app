@@ -158,15 +158,9 @@ class ContextAgent(BaseAgent):
             context_input = ContextInput(**input_data)
         except (json.JSONDecodeError, ValueError):
             context_input = ContextInput(query=user_prompt)
-        
-        files_context = ""
-        if context_input.user_files:
-            files_context = f"\nUSER_FILES: {json.dumps(context_input.user_files, indent=2)}"
-        
-        answers_context = ""
-        if context_input.answer_to_questions:
-            answers_context = f"\nANSWER_TO_QUESTIONS: {context_input.answer_to_questions}"
 
+
+        # Instruction for the ai agent
         instruction = f"""
         # Instructions From System
         {self.row_instruction}
@@ -176,11 +170,17 @@ class ContextAgent(BaseAgent):
         {history_text}
         """
 
-        user_prompt = f"""
-        ## Current Input Analysis
-        QUERY: {context_input.query}
-        RESEARCH_SCOPE: {context_input.research_scope}{files_context}{answers_context}
-        """
+        # User input for the ai agent
+        sections = [
+            f"QUERY: {context_input.query}",
+            f"RESEARCH_SCOPE: {context_input.research_scope}"
+        ]
+        if context_input.user_files:
+            sections.append(f"USER_FILES: {json.dumps(context_input.user_files, indent=2)}")
+        if context_input.answer_to_questions:
+            sections.append(f"ANSWER_TO_QUESTIONS: {context_input.answer_to_questions}")
+
+        user_prompt = "\n".join(sections)
 
         return PromptTemplate(user_prompt=user_prompt, system_prompt=instruction)
     

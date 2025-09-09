@@ -64,9 +64,11 @@ class BaseAgent(ABC):
         self.max_iterations = max_iterations
 
     @abstractmethod
-    async def execute(self) -> AgentOutput:
-        """Execute agent task (can be overridden if needed)"""
-        return await self.run_loop(self.config.task)
+    def execute(self, input_data: Dict) -> Any:
+        try:
+            return self.function(input_data)
+        except Exception as e:
+            raise RuntimeError(f"Tool '{self.name}' execution failed: {e}")
 
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM and return raw output"""
@@ -96,11 +98,16 @@ class BaseAgent(ABC):
         state = {"history": [], "tool_results": {}}
 
         for step in range(self.max_iterations):
-            _prompts = self._build_prompt(user_prompt, state)
-            prompt = _prompts.user_prompt
-            self.instruction = _prompts.system_prompt
-            raw_output = await self._call_llm(prompt)
-            parsed_output = await self._parse_output(raw_output)
+            prompts = self._build_prompt(user_prompt, state)
+            self.instruction = prompts.system_prompt
+            raw_output = await self._call_llm(prompts.user_prompt)
+
+            try:
+                parsed_output = await self._parse_output(raw_output)
+            except Exception as e:
+                self.logger.error(f"Parse failed: {e}")
+                parsed_output = raw_output
+                
             state["history"].append(
                 {"step": step, "raw": raw_output, "parsed": parsed_output}
             )
@@ -130,18 +137,25 @@ class BaseAgent(ABC):
         )
 
     def _decide_action(self, parsed_output: Any) -> Dict[str, Any]:
-        """Decide what to do next based on parsed LLM output"""
+        """Decide what to do next based on parsed LLM output."""
+        if isinstance(parsed_output, dict):
+            return parsed_output
+    
+        # Handle BaseModel (structured Pydantic output)
+        if isinstance(parsed_output, BaseModel):
+            return parsed_output.dict()
+        
+        # Ensure minimal required fields
+        if "type" not in parsed_output:
+            parsed_output["type"] = "final"
+        
+        # Try to recover from string output
         try:
-            if isinstance(parsed_output, BaseModel):
-                output = parsed_output
-            else:
-                output = json.loads(parsed_output)
-            # Ensure minimal required fields
-            if "type" not in output:
-                output["type"] = "final"
-            return output
+            return json.loads(parsed_output)
         except Exception:
+            self.logger.warning("Fallback: treating output as final answer")
             return {"type": "final", "answer": parsed_output}
+
 
     @abstractmethod
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
