@@ -52,23 +52,29 @@ class AgentOutput(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
+class PromptTemplate(BaseModel):
+    user_prompt: str
+    system_prompt: str
 
 class BaseAgent(ABC):
     def __init__(self, config: AgentInput, model, max_iterations: int = 10):
         self.config = config
         self.model = model
+        self.instruction = "" 
         self.max_iterations = max_iterations
 
     @abstractmethod
-    async def execute(self, prompt: str) -> AgentOutput:
-        """Execute agent task (can be overridden if needed)"""
-        return await self.run_loop(prompt)
+    def execute(self, input_data: Dict) -> Any:
+        try:
+            return self.function(input_data)
+        except Exception as e:
+            raise RuntimeError(f"Tool '{self.name}' execution failed: {e}")
 
     async def _call_llm(self, prompt: str) -> str:
         """Call LLM and return raw output"""
         output = self.model.create_chat_completion(
             messages=[
-                {"role": "system", "content": self.config.task},
+                {"role": "system", "content": self.instruction},
                 {"role": "user", "content": prompt},
             ],
         )
@@ -92,9 +98,16 @@ class BaseAgent(ABC):
         state = {"history": [], "tool_results": {}}
 
         for step in range(self.max_iterations):
-            prompt = self._build_prompt(user_prompt, state)
-            raw_output = await self._call_llm(prompt)
-            parsed_output = await self._parse_output(raw_output)
+            prompts = self._build_prompt(user_prompt, state)
+            self.instruction = prompts.system_prompt
+            raw_output = await self._call_llm(prompts.user_prompt)
+
+            try:
+                parsed_output = await self._parse_output(raw_output)
+            except Exception as e:
+                self.logger.error(f"Parse failed: {e}")
+                parsed_output = raw_output
+                
             state["history"].append(
                 {"step": step, "raw": raw_output, "parsed": parsed_output}
             )
@@ -124,43 +137,28 @@ class BaseAgent(ABC):
         )
 
     def _decide_action(self, parsed_output: Any) -> Dict[str, Any]:
-        """Decide what to do next based on parsed LLM output"""
+        """Decide what to do next based on parsed LLM output."""
+        if isinstance(parsed_output, dict):
+            return parsed_output
+    
+        # Handle BaseModel (structured Pydantic output)
+        if isinstance(parsed_output, BaseModel):
+            return parsed_output.dict()
+        
+        # Ensure minimal required fields
+        if "type" not in parsed_output:
+            parsed_output["type"] = "final"
+        
+        # Try to recover from string output
         try:
-            output = json.loads(parsed_output)
-            # Ensure minimal required fields
-            if "type" not in output:
-                output["type"] = "final"
-            return output
+            return json.loads(parsed_output)
         except Exception:
+            self.logger.warning("Fallback: treating output as final answer")
             return {"type": "final", "answer": parsed_output}
 
-    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> str:
+
+    @abstractmethod
+    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """Build prompt with history and tool results"""
-        history_text = "\n".join(
-            [f"Step {h['step']}: {h['raw']}" for h in state["history"]]
-        )
-        tools_text = "\n".join(
-            [f"{name}: {res}" for name, res in state["tool_results"].items()]
-        )
-        return f"""
-        You are an agent. Decide if you need to use a tool, delegate to another agent, or provide a final answer.
-        
-        User task: {user_prompt}
 
-        History:
-        {history_text}
-
-        Available tools: {[t.name for t in self.config.tools]}
-
-        Tool results so far:
-        {tools_text}
-
-        Respond in JSON with fields:
-        - type: "final", "tool", "agent"
-        - answer: (if final)
-        - name: (if tool/agent)
-        - input: (if tool)
-        """
-
-# TODO: _build_prompt should modify task which is used as sytem prompt not user_prompt
 # TODO: run_loop and _decide_action should be imporoved

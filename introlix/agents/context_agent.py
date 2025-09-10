@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from .baseclass import AgentInput, AgentOutput, BaseAgent
+from .baseclass import AgentInput, BaseAgent, PromptTemplate
 
 
 class ResearchParameters(BaseModel):
@@ -69,9 +69,88 @@ class ContextAgent(BaseAgent):
     def __init__(self, config: AgentInput, model, max_iterations: int = 3):
         super().__init__(config, model, max_iterations)
         self.logger = logging.getLogger(__name__)
+
+        self.row_instruction = f"""
+        You are a Context Agent in the Introlix Research Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
+
+        ## Your Mission
+        Gather ALL necessary information from the user before research begins. You are the gateway that determines whether the research will be successful or fail. Your output directly controls:
+        - Planner Agent (creates research plans)
+        - Explorer Agents (web searches in parallel)
+        - Verifier Agent (fact-checking)
+        - Knowledge Gap Agent (quality control)
+        - Researcher Agent (final synthesis)
+
+        ## Critical Analysis Required
+        You MUST thoroughly analyze this input and determine if you have enough context for successful research. Consider:
+
+        ### Query Specificity Assessment
+        1. Is the query specific enough for meaningful research?
+        2. What are the exact research objectives?
+        3. What specific information is the user seeking?
+        4. Are there any ambiguities that could lead to poor research outcomes?
+
+        ### Research Type & Scope Analysis
+        5. What type of research is being requested? (academic, business, technical, news, etc.)
+        6. How should the research scope (narrow/medium/comprehensive) affect the approach?
+        7. What level of detail is expected in the final output?
+        8. What is the intended use of the research results?
+
+        ### Source Requirements & Quality
+        9. What sources would be most appropriate and credible?
+        10. What types of evidence would be most valuable?
+        11. Are there any specific domains, timeframes, or geographic considerations?
+        12. What would constitute "high-quality" sources for this query?
+
+        ### User Context Integration
+        13. If user files are provided, how do they inform the research direction?
+        14. What context from previous answers should influence the research?
+        15. Are there any constraints or preferences mentioned?
+
+        ### Research Parameters Optimization
+        16. What would be the optimal research parameters for this specific query?
+        17. How should the research scope influence parameter selection?
+        18. What resource allocation would be most effective?
+
+        ## Required Output Structure
+        Respond with a JSON object containing:
+        - type: "final"
+        - answer: JSON object with the following structure:
+        {{
+            "questions": ["specific clarifying question 1", "specific clarifying question 2"],
+            "move_next": true/false,
+            "confidence_level": 0.0-1.0,
+            "final_prompt": "detailed, enriched, and comprehensive prompt that consolidates ALL user input and context",
+            "research_parameters": {{
+            "estimated_duration": "CHOOSE ONE: short OR medium OR long",
+            "complexity_level": "CHOOSE ONE: basic OR intermediate OR advanced", 
+            "required_sources": "CHOOSE ONE: academic OR news OR mixed OR technical",
+            "research_depth": "CHOOSE ONE: surface OR detailed OR comprehensive"
+            }}
+        }}
+
+        ## Critical Guidelines
+        - CONFIDENCE_LEVEL: If < 0.7, ask clarifying questions (max 5 to avoid user fatigue)
+        - CONFIDENCE_LEVEL: If >= 0.7, proceed to next agent
+        - CONFIDENCE_LEVEL helps determine if borderline cases should proceed
+        - FINAL_PROMPT: Must be comprehensive and include ALL relevant context from user files and answers
+        - Track conversation history to avoid repeating questions
+        - RESEARCH_PARAMETERS: Must guide downstream agent behavior and resource allocation
+        - Choose appropriate values for each research parameter based on thorough query analysis
+        - Consider research scope (narrow/medium/comprehensive) when setting parameters
+        - Ensure the research can be transformed into a full research paper if needed
+        - Consider both deep research and quick shallow search capabilities of the platform
+
+        ## Quality Standards
+        Your output determines the success of the entire research pipeline. Be thorough, precise, and comprehensive in your analysis.
+        """
         
-    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> str:
+    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """Build context-specific prompt for analysis."""
+
+        history_text = "\n".join(
+            [f"Step {h['step']}: {h['raw']}" for h in state["history"]]
+        )
         
         # Parse input if it's JSON, otherwise treat as simple query
         try:
@@ -79,93 +158,31 @@ class ContextAgent(BaseAgent):
             context_input = ContextInput(**input_data)
         except (json.JSONDecodeError, ValueError):
             context_input = ContextInput(query=user_prompt)
-        
-        files_context = ""
+
+
+        # Instruction for the ai agent
+        instruction = f"""
+        # Instructions From System
+        {self.row_instruction}
+
+        # Current Conversation
+        Below is the current conversation consisting of interleaving human and assistant messages.
+        {history_text}
+        """
+
+        # User input for the ai agent
+        sections = [
+            f"QUERY: {context_input.query}",
+            f"RESEARCH_SCOPE: {context_input.research_scope}"
+        ]
         if context_input.user_files:
-            files_context = f"\nUSER_FILES: {json.dumps(context_input.user_files, indent=2)}"
-        
-        answers_context = ""
+            sections.append(f"USER_FILES: {json.dumps(context_input.user_files, indent=2)}")
         if context_input.answer_to_questions:
-            answers_context = f"\nANSWER_TO_QUESTIONS: {context_input.answer_to_questions}"
-        
-        return f"""
-You are a Context Agent in the Introlix Research Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
+            sections.append(f"ANSWER_TO_QUESTIONS: {context_input.answer_to_questions}")
 
-## Your Mission
-Gather ALL necessary information from the user before research begins. You are the gateway that determines whether the research will be successful or fail. Your output directly controls:
-- Planner Agent (creates research plans)
-- Explorer Agents (web searches in parallel)
-- Verifier Agent (fact-checking)
-- Knowledge Gap Agent (quality control)
-- Researcher Agent (final synthesis)
+        user_prompt = "\n".join(sections)
 
-## Current Input Analysis
-QUERY: {context_input.query}
-RESEARCH_SCOPE: {context_input.research_scope}{files_context}{answers_context}
-
-## Critical Analysis Required
-You MUST thoroughly analyze this input and determine if you have enough context for successful research. Consider:
-
-### Query Specificity Assessment
-1. Is the query specific enough for meaningful research?
-2. What are the exact research objectives?
-3. What specific information is the user seeking?
-4. Are there any ambiguities that could lead to poor research outcomes?
-
-### Research Type & Scope Analysis
-5. What type of research is being requested? (academic, business, technical, news, etc.)
-6. How should the research scope (narrow/medium/comprehensive) affect the approach?
-7. What level of detail is expected in the final output?
-8. What is the intended use of the research results?
-
-### Source Requirements & Quality
-9. What sources would be most appropriate and credible?
-10. What types of evidence would be most valuable?
-11. Are there any specific domains, timeframes, or geographic considerations?
-12. What would constitute "high-quality" sources for this query?
-
-### User Context Integration
-13. If user files are provided, how do they inform the research direction?
-14. What context from previous answers should influence the research?
-15. Are there any constraints or preferences mentioned?
-
-### Research Parameters Optimization
-16. What would be the optimal research parameters for this specific query?
-17. How should the research scope influence parameter selection?
-18. What resource allocation would be most effective?
-
-## Required Output Structure
-Respond with a JSON object containing:
-- type: "final"
-- answer: JSON object with the following structure:
-  {{
-    "questions": ["specific clarifying question 1", "specific clarifying question 2"],
-    "move_next": true/false,
-    "confidence_level": 0.0-1.0,
-    "final_prompt": "detailed, enriched, and comprehensive prompt that consolidates ALL user input and context",
-    "research_parameters": {{
-      "estimated_duration": "CHOOSE ONE: short OR medium OR long",
-      "complexity_level": "CHOOSE ONE: basic OR intermediate OR advanced", 
-      "required_sources": "CHOOSE ONE: academic OR news OR mixed OR technical",
-      "research_depth": "CHOOSE ONE: surface OR detailed OR comprehensive"
-    }}
-  }}
-
-## Critical Guidelines
-- CONFIDENCE_LEVEL: If < 0.7, ask clarifying questions (max 5 to avoid user fatigue)
-- CONFIDENCE_LEVEL: If >= 0.7, proceed to next agent
-- CONFIDENCE_LEVEL helps determine if borderline cases should proceed
-- FINAL_PROMPT: Must be comprehensive and include ALL relevant context from user files and answers
-- Track conversation history to avoid repeating questions
-- RESEARCH_PARAMETERS: Must guide downstream agent behavior and resource allocation
-- Choose appropriate values for each research parameter based on thorough query analysis
-- Consider research scope (narrow/medium/comprehensive) when setting parameters
-- Ensure the research can be transformed into a full research paper if needed
-- Consider both deep research and quick shallow search capabilities of the platform
-
-## Quality Standards
-Your output determines the success of the entire research pipeline. Be thorough, precise, and comprehensive in your analysis.
-"""
+        return PromptTemplate(user_prompt=user_prompt, system_prompt=instruction)
     
     async def _parse_output(self, raw_output: str) -> Any:
         """Parse LLM output and validate structure."""
