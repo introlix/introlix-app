@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Callable
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
@@ -15,10 +15,12 @@ class Tool(BaseModel):
         default=DEFAULT_TOOL_DESCRIPTION,
         description="The description of what the tool does and is responsible for",
     )
-    function: callable  # Function to execute the tool
+    function: Optional[Any] = Field(default=None, description="The callable function to execute")
     input_schema: Optional[Dict] = Field(
         default=None, description="Optional schema for tool input"
     )
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("name")
     def validate_name(cls, v):
@@ -42,14 +44,13 @@ class AgentInput(BaseModel):
     )
     task: Optional[str] = Field(default=None, description="User query or task")
     output_type: Optional[Type[BaseModel]] = None
-    output_parser: Optional[callable] = None
+    output_parser: Optional[Callable[[str], Any]] = Field(default=None, description="Custom output parser function")
 
 
 class AgentOutput(BaseModel):
     result: Any
     performance: Dict = {}
     next_agent: Optional[str] = None
-
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 class PromptTemplate(BaseModel):
@@ -70,15 +71,24 @@ class BaseAgent(ABC):
         except Exception as e:
             raise RuntimeError(f"Tool '{self.name}' execution failed: {e}")
 
-    async def _call_llm(self, prompt: str) -> str:
+    async def _call_llm(self, prompt: str, cloud: bool = True) -> str:
         """Call LLM and return raw output"""
-        output = self.model.create_chat_completion(
-            messages=[
-                {"role": "system", "content": self.instruction},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        return output.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if cloud:
+            from introlix.services.LLMState import LLMState
+            llm_state = LLMState()
+            response = await llm_state.get_open_router(model_name=self.model, sys_prompt=self.instruction, user_prompt=prompt)
+
+            output = response.json()
+            print(output)
+            return output["choices"][0]["message"]["content"]
+        else:
+            output = self.model.create_chat_completion(
+                messages=[
+                    {"role": "system", "content": self.instruction},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            return output.get("choices", [{}])[0].get("message", {}).get("content", "")
 
     async def _parse_output(self, raw_output: str) -> Any:
         """Parse LLM output using output_parser or output_type"""
@@ -101,6 +111,8 @@ class BaseAgent(ABC):
             prompts = self._build_prompt(user_prompt, state)
             self.instruction = prompts.system_prompt
             raw_output = await self._call_llm(prompts.user_prompt)
+
+            print(raw_output)
 
             try:
                 parsed_output = await self._parse_output(raw_output)
@@ -138,27 +150,45 @@ class BaseAgent(ABC):
 
     def _decide_action(self, parsed_output: Any) -> Dict[str, Any]:
         """Decide what to do next based on parsed LLM output."""
-        if isinstance(parsed_output, dict):
-            return parsed_output
-    
-        # Handle BaseModel (structured Pydantic output)
+        
+        # Handle BaseModel (structured Pydantic output) first
         if isinstance(parsed_output, BaseModel):
-            return parsed_output.dict()
+            result = parsed_output.model_dump()
+            # Ensure type field exists
+            if "type" not in result:
+                result["type"] = "final"
+            return result
         
-        # Ensure minimal required fields
-        if "type" not in parsed_output:
-            parsed_output["type"] = "final"
+        # Handle dictionary
+        if isinstance(parsed_output, dict):
+            # Ensure type field exists
+            if "type" not in parsed_output:
+                parsed_output["type"] = "final"
+            return parsed_output
         
-        # Try to recover from string output
-        try:
-            return json.loads(parsed_output)
-        except Exception:
-            self.logger.warning("Fallback: treating output as final answer")
-            return {"type": "final", "answer": parsed_output}
+        # Handle string - try to parse as JSON first
+        if isinstance(parsed_output, str):
+            try:
+                json_result = json.loads(parsed_output)
+                if isinstance(json_result, dict):
+                    # Ensure type field exists
+                    if "type" not in json_result:
+                        json_result["type"] = "final"
+                    return json_result
+                else:
+                    # JSON parsed but not a dict, treat as final answer
+                    return {"type": "final", "answer": json_result}
+            except (json.JSONDecodeError, TypeError):
+                # Not valid JSON, treat as final answer
+                self.logger.warning("Fallback: treating string output as final answer")
+                return {"type": "final", "answer": parsed_output}
+        
+        # Fallback for any other type
+        self.logger.warning(f"Fallback: treating {type(parsed_output)} output as final answer")
+        return {"type": "final", "answer": parsed_output}
+
 
 
     @abstractmethod
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """Build prompt with history and tool results"""
-
-# TODO: run_loop and _decide_action should be imporoved

@@ -1,11 +1,12 @@
 import os
 import asyncio
 import gc
+import requests
+import json
 from fastapi import HTTPException
 from llama_cpp import Llama
 from typing import Optional
-from config import MODEL_SAVE_DIR
-
+from introlix.config import MODEL_SAVE_DIR, OPEN_ROUTER_KEY
 
 class LLMState:
     def __init__(self):
@@ -54,6 +55,27 @@ class LLMState:
                     status_code=500, detail=f"Error loading model: {str(e)}"
                 )
 
+    async def get_open_router(
+        self, model_name: str, sys_prompt: str, user_prompt
+    ):
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPEN_ROUTER_KEY}",
+            },
+            data=json.dumps(
+                {
+                    "model": model_name,  # Optional
+                    "messages": [
+                        {"role": "system", "content": sys_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                }
+            ),
+        )
+
+        return response
+
     async def unload_model(self):
         """Unload the current model and free memory."""
         async with self.lock:
@@ -65,11 +87,11 @@ class LLMState:
             gc.collect()  # Force garbage collection
             # Clear GPU memory if used
             import torch
+
             if torch.cuda.is_available():
 
                 torch.cuda.empty_cache()
             return {"status": "Model unloaded"}
-            
 
     def get_llm(self):
         """Get the current LLM instance or raise an error if not loaded."""
