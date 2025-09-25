@@ -63,3 +63,6 @@ Notes:
 - Track verification_score methodology for transparency
 - Escalate high-severity conflicts to Knowledge Gap Agent
 """
+
+# To verify explorer agent results run the verifier agent giving it input for context agent to get multiple answer and if answer differs then based on best source get the verified answer.
+# To verify the final report run the verifier agent giving it final report and if needed verfing the report then the verifier agent will generate queries that need to be verified and pass the queires to explorer agent and based on that it will say if it is corrent or not and what need to be corrected.

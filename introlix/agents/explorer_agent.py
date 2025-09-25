@@ -120,9 +120,9 @@ class ExplorerAgent:
         for query in self.queries:
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
 
-            for result in search_results:
+            for result in search_results: # TODO: Run in parallel
                 url = result.url
-                crawled_result = await web_crawler(url=url)
+                crawled_result = await web_crawler(url=url) # TODO: Run in parallel
 
                 # dividing the crawled_result into chunks
                 chunker = TextChunker(chunk_size=2000, overlap=50)
@@ -131,6 +131,12 @@ class ExplorerAgent:
                 # Save Chunks To Vector DB
                 # If want one single answer by summarizing the sources then for each chunk run the agent to get answer and then summarize the answers to get one single answer.
                 # If want multiple answers based on different source then for each chunk run the agent to get answer and return all the answers.
+
+                # Vector DB search to get relevant chunks based on the query
+                # Answer forming based on the relevant chunks
+                # IF needed then run the verifier agent to verify the answer
+                # If needed then return the one single answer or multiple answers based on the get_multiple_answer flag
+                # If not answer needed then return the crawled result with source details
 
                 print(f"Total Chunks: {len(chunks)}")
                 user_prompt = f"""
