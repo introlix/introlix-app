@@ -94,7 +94,7 @@ class ContextOutput(BaseModel):
 
 class ContextAgent(BaseAgent):
     def __init__(self, config: AgentInput, model, max_iterations: int = 3):
-        super().__init__(config, model, max_iterations)
+        super().__init__(config=config, model=model, max_iterations=max_iterations)
         self.logger = logging.getLogger(__name__)
 
         self.row_instruction = f"""
@@ -171,9 +171,6 @@ class ContextAgent(BaseAgent):
         ## Quality Standards
         Your output determines the success of the entire research pipeline. Be thorough, precise, and comprehensive in your analysis.
         """
-
-    def execute(self, input_data):
-        return super().execute(input_data)
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """Build context-specific prompt for analysis with proper input validation."""
@@ -299,7 +296,7 @@ async def run_context_agent():
     agent = ContextAgent(config=config, model="qwen/qwen3-30b-a3b:free")
 
     # Initial query
-    user_query = {"query": "Tell me about climate change", "research_scope": "medium"}
+    user_query = {"query": "The Evolution of Large Language Models (2018–2025): Technical Advances, Ethical Challenges, and Industry Impacts", "research_scope": "medium"}
 
     iteration = 0
     max_question_iterations = 5

@@ -16,9 +16,9 @@ class ScrapeResult(BaseModel):
     text: str = Field(description="The full text content of the webpage")
     title: str = Field(description="The title of the webpage")
     description: str = Field(description="A short description of the webpage")
-    links: list = Field(
-        description="List of links from the page that could be useful as it could be references, citations, or linked sources"
-    )
+    # links: list = Field(
+    #     description="List of links from the page that could be useful as it could be references, citations, or linked sources"
+    # )
 
 ssl_context = ssl.create_default_context()
 
@@ -95,7 +95,7 @@ async def extract_pdf_text(pdf_content: bytes) -> tuple[str, str, str]:
         print(f"Error extracting PDF content: {str(e)}")
         return "", "", ""
     
-async def web_crawler(url: str) -> Union[List[ScrapeResult], str]:
+async def web_crawler(url: str) -> Union[ScrapeResult, str]:
     """
     Crawls the pages to gets important details and content from the page.
 
@@ -130,10 +130,10 @@ async def web_crawler(url: str) -> Union[List[ScrapeResult], str]:
     else:
         # For web pages
         # Fetching links from the site
-        try:
-            links = await extract_links(html_content, url)
-        except Exception as e:
-            pass
+        # try:
+        #     links = await extract_links(html_content, url)
+        # except Exception as e:
+        #     pass
 
         # Getting main content
         downloaded = trafilatura.fetch_url(url)
@@ -151,7 +151,7 @@ async def web_crawler(url: str) -> Union[List[ScrapeResult], str]:
         text=text,
         title=title,
         description=description,
-        links=links
+        # links=links[:50]
     )
 
 if __name__ == "__main__":
