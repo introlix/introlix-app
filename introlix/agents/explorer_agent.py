@@ -91,14 +91,14 @@ class ExplorerAgent:
         """
         Initializes the ExplorerAgent with configuration parameters.
         Args:
-            query (str): The search query or topic to explore.
+            queries (str): The search query or topic to explore.
             get_answer (bool): Whether to generate a final answer summary.
             get_multiple_answer (bool): Whether to return multiple answers based on different source or return one answer by summarizing the sources.
         """
         self.INSTRUCTION = INSTRUCTION
         self.queries = queries
         self.get_answer = get_answer
-        self.self.get_multiple_answer = get_multiple_answer
+        self.get_multiple_answer = get_multiple_answer
         self.max_results = max_results
 
         self.explorer_config = AgentInput(
@@ -139,19 +139,23 @@ class ExplorerAgent:
                 # If not answer needed then return the crawled result with source details
 
                 print(f"Total Chunks: {len(chunks)}")
+                with open("test.txt", "a") as f:
+                    for chunk in chunks:
+                        f.write(chunk['text'] + "\n\n")
+                
                 user_prompt = f"""
                 Original search query: {query}
             
                 Search results to analyze:
-                {crawled_result.model_dump() if isinstance(result, ScrapeResult) else crawled_result}
+                {chunks[0]['text'] if len(chunks) > 0 else 'No chunks available'}
             
                 Return {self.max_results} search results or less.
                 """
-                # agent_output = await self.explorer_agent.run(user_prompt)
-                # return agent_output
+                agent_output = await self.explorer_agent.run(user_prompt)
+                return agent_output
             
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(query="What is the fastest animal", max_results=1)
+    explorer_agent = ExplorerAgent(queries=["what is an ai"], get_answer=False, get_multiple_answer=False, max_results=1)
     result = asyncio.run(explorer_agent.run())
     print(result)
