@@ -112,17 +112,15 @@ class TextChunker:
 
     def _add_overlap(self, previous_chunk: str, current_chunk: str) -> Tuple[str, int]:
         """Add overlap to the current chunk"""
-        previous_sentences = self.split_by_sentences(previous_chunk)
+        words = previous_chunk.split()
         overlap_text = ""
         overlap_tokens = 0
 
-        for sentence in reversed(previous_sentences):
-            sentence_tokens = self.count_tokens(sentence)
-            if overlap_tokens + sentence_tokens <= self.overlap:
-                overlap_text = sentence + (" " if overlap_text else "") + overlap_text
-                overlap_tokens += sentence_tokens
-            else:
-                break
+        for word in reversed(words):
+            test_tokens = self.count_tokens(word)
+            if overlap_tokens + test_tokens <= self.overlap:
+                overlap_text = word + (" " if overlap_text else "") + overlap_text
+                overlap_tokens += test_tokens
 
         new_chunk = overlap_text + (" " if overlap_text else "") + current_chunk
         new_chunk_tokens = self.count_tokens(new_chunk)

@@ -108,7 +108,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="qwen/qwen3-30b-a3b:free",
+            model="qwen/qwen3-235b-a22b:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -119,6 +119,7 @@ class ExplorerAgent:
     async def run(self):
         for query in self.queries:
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
+            print(search_results)
 
             for result in search_results: # TODO: Run in parallel
                 url = result.url
@@ -141,7 +142,7 @@ class ExplorerAgent:
                 print(f"Total Chunks: {len(chunks)}")
                 with open("test.txt", "a") as f:
                     for chunk in chunks:
-                        f.write(chunk['text'] + "\n\n")
+                        f.write(chunk['text'] + "\n\n" + "---------" + "\n\n")
                 
                 user_prompt = f"""
                 Original search query: {query}
@@ -151,8 +152,8 @@ class ExplorerAgent:
             
                 Return {self.max_results} search results or less.
                 """
-                agent_output = await self.explorer_agent.run(user_prompt)
-                return agent_output
+                # agent_output = await self.explorer_agent.run(user_prompt)
+                # return agent_output
             
             
 if __name__ == "__main__":
