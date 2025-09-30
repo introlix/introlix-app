@@ -110,7 +110,7 @@ Required JSON structure:
 """
 
 class ExplorerAgent:
-    def __init__(self, queries: list, get_answer: bool, get_multiple_answer: bool, max_results = 5):
+    def __init__(self, queries: list, user_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5):
         """
         Initializes the ExplorerAgent with configuration parameters.
         Args:
@@ -120,6 +120,7 @@ class ExplorerAgent:
         """
         self.INSTRUCTION = INSTRUCTION
         self.queries = queries
+        self.user_id = user_id
         self.get_answer = get_answer
         self.get_multiple_answer = get_multiple_answer
         self.max_results = max_results
@@ -179,7 +180,7 @@ class ExplorerAgent:
             results = []
             for query in self.queries:
                 results_ = self.index.search(
-                    namespace="explored-data",
+                    namespace=self.user_id,
                     query={
                         "top_k": 3,
                         "inputs": {
@@ -208,7 +209,6 @@ class ExplorerAgent:
                 answer = await self.explorer_agent.run(user_prompt)
 
                 if answer.result.summary == "No Data Found":
-                    print("No data found")
                     await self.get_and_save_data()
                     await self.run(retry+1)
 
@@ -246,12 +246,16 @@ class ExplorerAgent:
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
 
             for result in search_results: # TODO: Run in parallel
+                print(result)
                 url = result.url
                 if self.is_url_exists(url):
-                    print("Url Already Exists")
                     continue
 
                 crawled_result = await web_crawler(url=url) # TODO: Run in parallel
+
+                if isinstance(crawled_result, str):  # Error message returned
+                    print(f"Failed to crawl {url}: {crawled_result}")
+                    continue
 
                 # dividing the crawled_result into chunks
                 chunker = TextChunker(chunk_size=400, overlap=50)
@@ -273,7 +277,7 @@ class ExplorerAgent:
 
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i:i + BATCH_SIZE]
-            self.index.upsert_records("explored-data", batch)
+            self.index.upsert_records(self.user_id, batch)
     
     def is_url_exists(self, url: str) -> bool:
         url_hash = hashlib.md5(url.encode()).hexdigest()
@@ -281,6 +285,6 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["What was the first computer?"], get_answer=True, get_multiple_answer=False, max_results=5)
+    explorer_agent = ExplorerAgent(queries=["What was the first computer?"], user_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
     result = asyncio.run(explorer_agent.run())
     print(result)

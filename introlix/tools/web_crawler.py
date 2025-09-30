@@ -58,8 +58,16 @@ async def fetch_page(url: str) -> tuple[str, bool]:
     """Fetch HTML content from a URL"""
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     headers = {
-        "User-Agent": "IntrolixCrawler/1.0",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
     }
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         try:
@@ -70,9 +78,12 @@ async def fetch_page(url: str) -> tuple[str, bool]:
                     if is_pdf:
                         return await response.read(), is_pdf
                     return await response.text(), is_pdf
+                else:
+                    print(f"HTTP {response.status} for {url}")
+                    return "", False  # Return empty tuple for non-200
         except Exception as e:
             print(f"Error fetching {url}: {str(e)}")
-            return "Error fetching page"
+            return "", False  # 
 
 async def extract_pdf_text(pdf_content: bytes) -> tuple[str, str, str]:
     """Extract text, title, and description from a PDF"""
@@ -155,6 +166,5 @@ async def web_crawler(url: str) -> Union[ScrapeResult, str]:
     )
 
 if __name__ == "__main__":
-    result = asyncio.run(web_crawler("https://arxiv.org/pdf/2506.12594"))
-    with open("result.json", 'w', encoding='utf-8') as file:
-        file.write(result.model_dump_json(indent=2))
+    result = asyncio.run(web_crawler("https://www.autodesk.com/products/fusion-360/blog/first-computer-around-century-ago/"))
+    print(result)
