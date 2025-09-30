@@ -207,8 +207,6 @@ class ExplorerAgent:
                 """
                 answer = await self.explorer_agent.run(user_prompt)
 
-                print(answer.result.summary)
-
                 if answer.result.summary == "No Data Found":
                     print("No data found")
                     await self.get_and_save_data()
