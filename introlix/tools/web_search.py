@@ -2,6 +2,7 @@ import ssl
 import json
 import aiohttp
 import asyncio
+from datetime import datetime
 from typing import Optional, List
 from pydantic import Field, BaseModel
 from introlix.config import SEARCHXNG_HOST
@@ -22,7 +23,8 @@ class SearchResults(BaseModel):
 
 
 FILTER_AGENT_INSTRUCTIONS = f"""
-You are a search result filter. Your task is to analyze a list of SearXNG search results and determine which ones are relevant
+You are a search result filter. Today's date is {datetime.now().strftime("%Y-%m-%d")}.
+Your task is to analyze a list of SearXNG search results and determine which ones are relevant
 to the original query based on the link, title and snippet. Return only the relevant results in the specified format. 
 
 - Remove any results that refer to entities that have similar names to the queried entity, but are not the same.

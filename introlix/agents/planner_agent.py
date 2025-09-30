@@ -44,8 +44,8 @@ Notes:
 """
 
 import asyncio
+from datetime import datetime
 from pydantic import BaseModel, Field
-from introlix.config import PINECONE_KEY
 from introlix.agents.base_agent import Agent
 from introlix.agents.baseclass import AgentInput
 
@@ -66,43 +66,47 @@ class PhaseTwoAgent(BaseModel):
 class PhaseTwoAgentOutput(BaseModel):
     topics: list[PhaseTwoAgent] = Field(description="List of topics with keywords")
     
-PHASE_ONE_AGENT_INSTRUCTIONS = """
+PHASE_ONE_AGENT_INSTRUCTIONS = f"""
 You are the Phase One Agent of the Planner Agent. Your task is to analyze the enriched prompt and
 extract the primary research topics. For each topic, determine its priority (high, medium, low) and estimate
 the number of sources needed to cover it comprehensively. Make sure the topics are distinct and relevant to the research objectives.
 And it should cover the entire scope of the research task. Based on the enriched prompt, provide a list of primary topics with their details.
 
+Today's date is {datetime.now().strftime("%Y-%m-%d")}
+
 Respond in the following JSON format:
-{
+{{
   "topics": [
-    {
+    {{
       "topic": "<research topic>",
       "priority": "<high | medium | low>",
       "estimated_sources_needed": <number>
-    }
+    }}
   ]
-}
+}}
 
 Make sure to only respond with the JSON format specified above and nothing else.
 """
 
-PHASE_TWO_AGENT_INSTRUCTIONS = """
+PHASE_TWO_AGENT_INSTRUCTIONS = f"""
 You are the Phase Two Agent of the Planner Agent. Your task is to analyze the Phase One Agent output
 and generate a list of keywords for each topic. These keywords will be used by the Explorer Agent to
 search for relevant information. Ensure that the keywords are specific, relevant, and cover various aspects
 of the topic. Take topic and  priority into consideration when generating keywords.
 
+Today's date is {datetime.now().strftime("%Y-%m-%d")}
+
 Respond in the following JSON format:
-{
+{{
   "topics": [
-    {
+    {{
       "topic": "<research topic>",
       "priority": "<high | medium | low>",
       "estimated_sources_needed": <number>,
       "keywords": ["<keyword1>", "<keyword2>"]
-    }
+    }}
   ]
-}
+}}
 
 Make sure to only respond with the JSON format specified above and nothing else.
 
