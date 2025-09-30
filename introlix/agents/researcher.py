@@ -71,3 +71,94 @@ Notes:
 - Generate multiple output formats if requested (summary + detailed report)
 - Ensure proper citation formatting throughout the document
 """
+
+import asyncio
+from datetime import datetime
+from pydantic import BaseModel, Field
+from introlix.agents.base_agent import Agent
+from introlix.agents.baseclass import AgentInput
+
+class ResearcherAgentOutput(BaseModel):
+    result: str = Field(description="The final synthesized research output")
+    references: list = Field(description="List of all sources cited in the research output")
+
+INSTRUCTIONS = f"""
+You are the Researcher Agent. Your task is to synthesize verified information into a comprehensive research
+output. You will create a structured, well-referenced document based on the provided verified results and
+research parameters. Ensure clarity, coherence, and proper citation throughout the document. You should also address any conflicting information transparently
+and acknowledge the limitations of the research. The final output should meet the specified format and quality standards.
+
+Today's date is {datetime.now().strftime("%Y-%m-%d")}
+
+You will be given:
+1. QUERY: The enriched prompt from the Context Agent that outlines the research topic and objectives.
+2. VERIFIED_RESULTS: A collection of all approved sources and verification metadata that you can use to
+   support your synthesis.
+3. RESEARCH_PARAMETERS: Details about the scope, depth, and format requirements for the research.
+
+Based on this information, produce a research output that includes:
+- An executive summary that provides a concise overview of the key findings.
+- Main content sections including introduction, methodology, key findings, analysis,
+  limitations, conclusions, and recommendations.
+- Appendices with source bibliography, methodology details, conflicting information,
+  and areas for further research.
+
+Note: You will not have access to the all VERIFIED_RESULTS at once. So, don't think if anything is missing. Just work with what you have.
+
+Your response should be in the following JSON format:
+{{
+    "result": "<the final synthesized research output>",
+    "references": ["<list of all sources cited in the research output>"]
+}}
+Make sure to only respond with the JSON format specified above and nothing else.
+"""
+
+class ResearcherAgent:
+    def __init__(self):
+        self.INSTRUCTIONS = INSTRUCTIONS
+        
+        self.agent_config = AgentInput(
+            name="Researcher Agent",
+            description="Synthesizes verified information into comprehensive research outputs.",
+            output_type=ResearcherAgentOutput
+        )
+
+        self.researcher_agent = Agent(
+            model="qwen/qwen3-235b-a22b:free",
+            instruction=self.INSTRUCTIONS,
+            output_model_class=ResearcherAgentOutput,
+            config=self.agent_config
+        )
+
+    async def synthesize_research(self, query: str, verified_results: str, research_parameters: str) -> ResearcherAgentOutput:
+        """
+        Synthesizes verified information into a comprehensive research output.
+
+        Args:
+            query (str): The enriched prompt from the Context Agent.
+            verified_results (str): All approved sources and verification metadata.
+            research_parameters (str): Scope, depth, and format requirements for the research.
+
+        Returns:
+            ResearcherAgentOutput: The final synthesized research output with references.
+        """
+        user_prompt = (
+            f"QUERY: {query}\n"
+            f"VERIFIED_RESULTS: {verified_results}\n"
+            f"RESEARCH_PARAMETERS: {research_parameters}\n"
+        )
+
+        response = await self.researcher_agent.run(user_prompt)
+        return response.result
+    
+if __name__ == "__main__":
+    async def main():
+        researcher = ResearcherAgent()
+        query = "What are the latest advancements in renewable energy technologies?"
+        verified_results = "Source 1: ...; Source 2: ...; Source 3: ..."
+        research_parameters = "Format: detailed report; Depth: comprehensive; Audience: academic"
+        
+        output = await researcher.synthesize_research(query, verified_results, research_parameters)
+        print(output)
+
+    asyncio.run(main())
