@@ -10,3 +10,4 @@
 
 
 # Note: When verifer agent rejects any information then user will be see the rejected information and if agent have done any mistake then user can correct it.
+# Note: Knowledge gap agent will be added later after beta release.
