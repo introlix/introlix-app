@@ -135,7 +135,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="qwen/qwen3-235b-a22b:free",
+            model="deepseek/deepseek-chat-v3.1:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -175,10 +175,14 @@ class ExplorerAgent:
                 source_type="",
                 credibility_indicators=""
             )
+        
         # checking if user asked for answer
         if self.get_answer or self.get_multiple_answer:
-            results = []
+            all_answers = []
+            
+            # Process each query separately
             for query in self.queries:
+                results = []
                 results_ = self.index.search(
                     namespace=self.user_id,
                     query={
@@ -188,49 +192,55 @@ class ExplorerAgent:
                         }
                     }
                 )
+                
                 for hit in results_['result']['hits']:
                     data = {
-                            "_id" : hit['_id'],
-                            "title": hit['fields']['title'],
-                            "description": hit['fields']['description'],
-                            "url": hit['fields']['url'],
-                            "chunk_id": hit['fields']['chunk_id'],
-                            "chunk_text": hit['fields']['chunk_text'],
-                            "score": hit['_score']
-                        }
+                        "_id": hit['_id'],
+                        "title": hit['fields']['title'],
+                        "description": hit['fields']['description'],
+                        "url": hit['fields']['url'],
+                        "chunk_id": hit['fields']['chunk_id'],
+                        "chunk_text": hit['fields']['chunk_text'],
+                        "score": hit['_score']
+                    }
                     results.append(data)
-            if self.get_answer and not self.get_multiple_answer:
-                user_prompt = f"""
-                The user query:
-                {query}
-                The result to analyze:
-                {results}
-                """
-                answer = await self.explorer_agent.run(user_prompt)
-
-                if answer.result.summary == "No Data Found":
-                    await self.get_and_save_data()
-                    await self.run(retry+1)
-
-                return answer.result
-
-            if self.get_answer and self.get_multiple_answer:
-                answers = []
-                for result in results:
+                
+                if self.get_answer and not self.get_multiple_answer:
+                    # Get single best answer for this query
                     user_prompt = f"""
                     The user query:
                     {query}
                     The result to analyze:
-                    {result}
+                    {results}
                     """
                     answer = await self.explorer_agent.run(user_prompt)
-                    if not answer.result.summary == "No Data Found":
-                        answers.append(answer.result)
-
-                if len(answers) == 0:
-                    await self.run(retry+1)
-                    await self.get_and_save_data()
-                return answers
+                    
+                    if answer.result.summary != "No Data Found":
+                        all_answers.append(answer.result)
+                
+                elif self.get_answer and self.get_multiple_answer:
+                    # Get multiple answers for this query
+                    for result in results:
+                        user_prompt = f"""
+                        The user query:
+                        {query}
+                        The result to analyze:
+                        {result}
+                        """
+                        answer = await self.explorer_agent.run(user_prompt)
+                        if answer.result.summary != "No Data Found":
+                            all_answers.append(answer.result)
+            
+            # If no valid answers found, get new data and retry
+            if len(all_answers) == 0:
+                await self.get_and_save_data()
+                return await self.run(retry + 1)
+            
+            # Return single answer or list based on mode
+            if self.get_answer and not self.get_multiple_answer:
+                return all_answers  # List of answers, one per query
+            else:
+                return all_answers  # List of all answers from all queries
         else:
             await self.get_and_save_data()
 
@@ -285,6 +295,6 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["What was the first computer?"], user_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
+    explorer_agent = ExplorerAgent(queries=["AI diagnostic accuracy improvement percentage 2024", "What was the first computer?"], user_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
     result = asyncio.run(explorer_agent.run())
     print(result)
