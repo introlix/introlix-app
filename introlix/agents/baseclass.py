@@ -1,4 +1,5 @@
 import json
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type, Callable
 
@@ -30,9 +31,24 @@ class Tool(BaseModel):
             raise ValueError("Tool name cannot be empty")
         return v
 
-    def execute(self, input_data: Dict) -> Any:
-        """Execute the tool with given input."""
-        return self.function(**input_data)
+    async def execute(self, input_data: Dict) -> Any:
+        """Execute the tool with given input.
+
+        Supports both sync and async callables. If the underlying function
+        returns an awaitable, it will be awaited. This method is async so
+        callers should await it.
+        """
+        if self.function is None:
+            raise RuntimeError("No function configured for tool")
+
+        # Call the underlying function
+        result = self.function(**input_data)
+
+        # If the result is awaitable (coroutine/future), await it
+        if inspect.isawaitable(result):
+            return await result
+
+        return result
 
 
 class AgentInput(BaseModel):
@@ -143,7 +159,7 @@ class BaseAgent(ABC):
             tool = next((t for t in self.config.tools if t.name == tool_name), None)
             if not tool:
                 raise ValueError(f"Tool {tool_name} not found")
-            tool_result = tool.execute(tool_input)
+            tool_result = await tool.execute(tool_input)
             state["tool_results"][tool_name] = tool_result
 
         elif action["type"] == "agent":
@@ -181,7 +197,7 @@ class BaseAgent(ABC):
                 tool = next((t for t in self.config.tools if t.name == tool_name), None)
                 if not tool:
                     raise ValueError(f"Tool {tool_name} not found")
-                tool_result = tool.execute(tool_input)
+                tool_result = await tool.execute(tool_input)
                 state["tool_results"][tool_name] = tool_result
 
             elif action["type"] == "agent":
