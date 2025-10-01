@@ -1,7 +1,7 @@
 Introlix Research is a platform for researchers, students and those people who want to do deep research or learn something deeply.
 
 # Features:
-- **Run locally or in the cloud**: Use LLMs either on your own machine or through the cloud.
+- **Run locally or in the cloud**: Use LLMs either on your own machine or through the cloud. (For future plans)
 - **Flexible input**: Upload PDFs/documents or simply provide a prompt, and the platform will conduct the research for you.
 - **Multi-agent system**: Supports both deep research and quick, shallow searches.
 - **Dynamic control**: Users can adjust the research direction at any point.
