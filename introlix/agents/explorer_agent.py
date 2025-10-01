@@ -110,7 +110,7 @@ Required JSON structure:
 """
 
 class ExplorerAgent:
-    def __init__(self, queries: list, user_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5):
+    def __init__(self, queries: list, unique_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5):
         """
         Initializes the ExplorerAgent with configuration parameters.
         Args:
@@ -120,7 +120,7 @@ class ExplorerAgent:
         """
         self.INSTRUCTION = INSTRUCTION
         self.queries = queries
-        self.user_id = user_id
+        self.unique_id = unique_id # Unique id = User ID + Workspace ID to make sure work space share same data
         self.get_answer = get_answer
         self.get_multiple_answer = get_multiple_answer
         self.max_results = max_results
@@ -184,7 +184,7 @@ class ExplorerAgent:
             for query in self.queries:
                 results = []
                 results_ = self.index.search(
-                    namespace=self.user_id,
+                    namespace=self.unique_id,
                     query={
                         "top_k": 3,
                         "inputs": {
@@ -287,7 +287,7 @@ class ExplorerAgent:
 
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i:i + BATCH_SIZE]
-            self.index.upsert_records(self.user_id, batch)
+            self.index.upsert_records(self.unique_id, batch)
     
     def is_url_exists(self, url: str) -> bool:
         url_hash = hashlib.md5(url.encode()).hexdigest()
@@ -295,6 +295,6 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["AI diagnostic accuracy improvement percentage 2024", "What was the first computer?"], user_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
+    explorer_agent = ExplorerAgent(queries=["AI diagnostic accuracy improvement percentage 2024", "What was the first computer?"], unique_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
     result = asyncio.run(explorer_agent.run())
     print(result)
