@@ -1,229 +1,192 @@
-import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuSub,
-    SidebarMenuSubItem,
-} from "@/components/ui/sidebar";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@radix-ui/react-collapsible";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, Folder, Plus, Search, Sparkles, SquarePen } from "lucide-react";
-import Image from "next/image";
+"use client"
+import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, FolderOpen, Globe, HelpCircle, LogOut, Microscope, Moon, NotepadText, Settings, Sparkles, SquarePen, Sun } from "lucide-react";
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "./ui/sidebar";
 import Link from "next/link";
-import { Input } from "./ui/input";
+import Image from "next/image";
+import { DropdownMenu, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenuContent } from "@radix-ui/react-dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { useState } from "react";
 
-// Menu items.
-const items = [
-    {
-        title: "New Research",
-        url: '/',
-        icon: SquarePen,
-    },
-    {
-        title: "Search Project/Researches",
-        url: '/',
-        icon: Search,
-    }
+const navigation = [
+    { name: "Workspaces", href: "/workspaces", icon: FolderOpen },
+    { name: "Resources", href: "/resources", icon: Globe },
+];
+
+const recentOpens = [
+    { id: "1", name: "Project Alpha", href: "/workspaces/alpha" },
+    { id: "2", name: "Market Research", href: "/workspaces/market-research" },
+    { id: "3", name: "Design Docs", href: "/workspaces/design-docs" },
+    { id: "4", name: "User Feedback", href: "/workspaces/user-feedback" },
+    { id: "5", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
+    { id: "6", name: "Project Alpha", href: "/workspaces/alpha" },
+    { id: "7", name: "Market Research", href: "/workspaces/market-research" },
+    { id: "8", name: "Design Docs", href: "/workspaces/design-docs" },
+    { id: "9", name: "User Feedback", href: "/workspaces/user-feedback" },
+    { id: "10", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
+    { id: "11", name: "Project Alpha", href: "/workspaces/alpha" },
+    { id: "12", name: "Market Research", href: "/workspaces/market-research" },
+    { id: "13", name: "Design Docs", href: "/workspaces/design-docs" },
+    { id: "14", name: "User Feedback", href: "/workspaces/user-feedback" },
+    { id: "15", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
+    { id: "16", name: "Project Alpha", href: "/workspaces/alpha" },
+    { id: "17", name: "Market Research", href: "/workspaces/market-research" },
+    { id: "18", name: "Design Docs", href: "/workspaces/design-docs" },
+    { id: "19", name: "User Feedback", href: "/workspaces/user-feedback" },
+    { id: "20", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
 ]
 
-// Projects Item
-const projects = [
-    {
-        title: "Project1",
-        items: [
-            {
-                title: 'Research 1',
-                url: '/'
-            },
-            {
-                title: 'Research 2',
-                url: '/'
-            },
-            {
-                title: 'Research 3',
-                url: '/'
-            },
-            {
-                title: 'Research 4',
-                url: '/'
-            }
-        ]
-    },
-    {
-        title: "Project2",
-        items: [
-            {
-                title: 'Research 1',
-                url: '/'
-            },
-            {
-                title: 'Research 2',
-                url: '/'
-            },
-            {
-                title: 'Research 3',
-                url: '/'
-            },
-            {
-                title: 'Research 4',
-                url: '/'
-            }
-        ]
-    },
-    {
-        title: "Project3",
-        items: [
-            {
-                title: 'Research 1',
-                url: '/'
-            },
-            {
-                title: 'Research 2',
-                url: '/'
-            },
-            {
-                title: 'Research 3',
-                url: '/'
-            },
-            {
-                title: 'Research 4',
-                url: '/'
-            }
-        ]
-    },
-    {
-        title: "Project4",
-        items: [
-            {
-                title: 'Research 1',
-                url: '/'
-            },
-            {
-                title: 'Research 2',
-                url: '/'
-            },
-            {
-                title: 'Research 3',
-                url: '/'
-            },
-            {
-                title: 'Research 4',
-                url: '/'
-            }
-        ]
-    },
-    {
-        title: "Project5",
-        items: [
-            {
-                title: 'Research 1',
-                url: '/'
-            },
-            {
-                title: 'Research 2',
-                url: '/'
-            },
-            {
-                title: 'Research 3',
-                url: '/'
-            },
-            {
-                title: 'Research 4',
-                url: '/'
-            }
-        ]
-    }
-]
+const newChat = () => { }
 
 export function AppSidebar() {
+    const { isMobile } = useSidebar();
+
+    const [theme, setTheme] = useState<"light" | "dark">("light");
+
+    const toggleTheme = () => {
+        const newTheme = theme === "light" ? "dark" : "light";
+        setTheme(newTheme);
+        document.documentElement.classList.toggle("dark");
+    };
+
     return (
-        <Sidebar>
+        <Sidebar collapsible="icon">
             <SidebarHeader>
-                <Collapsible className="group/collapsible">
-                    <SidebarGroup>
-                        <SidebarGroupLabel asChild>
-                            <CollapsibleTrigger className="cursor-pointer">
-                                <Image src={'./vercel.svg'} alt="Logo" width={20} height={20} />
-                                <h3 className="text-xl ml-auto">Introlix</h3>
-                                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                            </CollapsibleTrigger>
-                        </SidebarGroupLabel>
-                        <CollapsibleContent>
-                            <SidebarGroupContent>
-                                <SidebarMenu>
-                                    <SidebarMenuItem className="border border-secondary rounded-xl mt-3">
-                                        <SidebarMenuButton asChild>
-                                            <Link href={'/subscription'}>
-                                                <Sparkles />Introlix Pro
-                                            </Link>
-                                        </SidebarMenuButton>
-                                        <SidebarMenuButton asChild>
-                                            <Link href={'/subscription'}>
-                                                <Plus />Introlix Basic
-                                            </Link>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                </SidebarMenu>
-                            </SidebarGroupContent>
-                        </CollapsibleContent>
-                    </SidebarGroup>
-                </Collapsible>
+                <SidebarMenu>
+                    <Link href={'/'}>
+                        <SidebarMenuButton className="cursor-pointer" tooltip="">
+                            <Image src={'./vercel.svg'} alt="" width={20} height={20} />
+                            <span className="text-lg font-bold">Introlix</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenu>
             </SidebarHeader>
             <SidebarContent>
                 <SidebarGroup>
                     <SidebarGroupContent>
                         <SidebarMenu>
-                            {items.map((item) => (
-                                <SidebarMenuItem key={item.title}>
-                                    <SidebarMenuButton asChild>
-                                        <Link href={item.url}>
-                                            <item.icon />
-                                            <span>{item.title}</span>
-                                        </Link>
-                                    </SidebarMenuButton>
+                            {navigation.map((item) => (
+                                <SidebarMenuItem key={item.name}>
+                                    <Link key={item.name} href={item.href}>
+                                        <SidebarMenuButton className="cursor-pointer" tooltip={item.name}>
+                                            {item.icon && <item.icon />}
+                                            <span>{item.name}</span>
+                                        </SidebarMenuButton>
+                                    </Link>
                                 </SidebarMenuItem>
                             ))}
+                            <SidebarMenuItem>
+                                <SidebarMenuButton className="cursor-pointer" tooltip="New Chat" onClick={newChat}>
+                                    <SquarePen />
+                                    <span>New Chat</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton className="cursor-pointer" tooltip="New Research" onClick={newChat}>
+                                    <Microscope />
+                                    <span>New Research</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton className="cursor-pointer" tooltip="New Desk" onClick={newChat}>
+                                    <NotepadText />
+                                    <span>New Desk</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
                         </SidebarMenu>
-                    </SidebarGroupContent>
-                    <SidebarGroupContent className="mt-5">
-                        <SidebarGroupLabel>Projects</SidebarGroupLabel>
-                        <SidebarMenu>
-                            {projects.map((project) => (
-                                <SidebarMenuItem key={project.title}>
-                                    <Collapsible defaultOpen={false} className="group/collapsible">
-                                        <CollapsibleTrigger asChild>
-                                            <SidebarMenuButton>
-                                                {project.title}
-                                                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                                            </SidebarMenuButton>
-                                        </CollapsibleTrigger>
-
-                                        <CollapsibleContent>
-                                            <SidebarMenuSub>
-                                                {project.items.map((research) => (
-                                                    <SidebarMenuSubItem key={research.title}>
-                                                        <Link href={research.url}>{research.title}</Link>
-                                                    </SidebarMenuSubItem>
-                                                ))}
-                                            </SidebarMenuSub>
-                                        </CollapsibleContent>
-                                    </Collapsible>
-                                </SidebarMenuItem>
-                            ))}
-                        </SidebarMenu>
-
                     </SidebarGroupContent>
                 </SidebarGroup>
-                <SidebarGroup />
+                <SidebarGroup className="flex-1 overflow-y-auto">
+                    <SidebarGroupLabel>Recents</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                        <SidebarMenu>
+                            {recentOpens.map((item) => (
+                                <SidebarMenuItem key={item.id}>
+                                    <Link href={item.href}>
+                                        <SidebarMenuButton asChild tooltip={item.name}>
+                                            <span className="group-data-[collapsible=icon]:hidden">{item.name}</span>
+                                        </SidebarMenuButton>
+                                    </Link>
+                                </SidebarMenuItem>
+                            ))}
+                        </SidebarMenu>
+                    </SidebarGroupContent>
+                </SidebarGroup>
             </SidebarContent>
-            <SidebarFooter />
+            <SidebarFooter>
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <SidebarMenuButton
+                                    size="lg"
+                                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                                >
+                                    <Avatar className="h-8 w-8 rounded-full">
+                                        <span className="bg-blue-400 w-full items-center justify-center flex">SM</span>
+                                    </Avatar>
+                                    <div className="grid flex-1 text-left text-sm leading-tight">
+                                        <span className="truncate font-medium">{"Satyam Mishra"}</span>
+                                        <span className="truncate text-xs">{"satyam8mishra9@gmail.com"}</span>
+                                    </div>
+                                    <ChevronsUpDown className="ml-auto size-4" />
+                                </SidebarMenuButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                className="w-(--radix-dropdown-menu-trigger-width) bg-sidebar border border-accent min-w-56 rounded-lg"
+                                side={isMobile ? "bottom" : "right"}
+                                align="end"
+                                sideOffset={4}
+                            >
+                                <DropdownMenuLabel className="p-0 font-normal">
+                                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                                        <Avatar className="h-8 w-8 rounded-lg">
+                                            <span className="bg-blue-400 w-full items-center justify-center flex">SM</span>
+                                        </Avatar>
+                                        <div className="grid flex-1 text-left text-sm leading-tight">
+                                            <span className="truncate font-medium">{"Satyam Mishra"}</span>
+                                            <span className="truncate text-xs">{"satyam8mishra9@gmail.com"}</span>
+                                        </div>
+                                    </div>
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuGroup>
+                                    <Link href={'/upgrade'}>
+                                        <DropdownMenuItem className="cursor-pointer">
+                                            <Sparkles />
+                                            Upgrade plan
+                                        </DropdownMenuItem>
+                                    </Link>
+                                </DropdownMenuGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuGroup>
+                                    <Link href={'/settings'}>
+                                        <DropdownMenuItem className="cursor-pointer">
+                                            <Settings />
+                                            Settings
+                                        </DropdownMenuItem>
+                                    </Link>
+                                    <Link href={'/help'}>
+                                        <DropdownMenuItem className="cursor-pointer">
+                                            <HelpCircle />
+                                            Help
+                                        </DropdownMenuItem>
+                                    </Link>
+                                    <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
+                                        {theme === "light" ? <Moon /> : <Sun />}
+                                        {theme === "light" ? "Dark mode" : "Light mode"}
+                                    </DropdownMenuItem>
+                                </DropdownMenuGroup>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem>
+                                    <LogOut />
+                                    Log out
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarFooter>
         </Sidebar>
     )
 }
