@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-accent`}
       >
         <ThemeProvider
           attribute="class"
@@ -37,11 +37,13 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <SidebarProvider>
-            <AppSidebar />
-            <main>
+            <div className="flex w-full h-screen">
+              <AppSidebar />
               <SidebarTrigger />
-              {children}
-            </main>
+              <main className="flex-1 flex flex-col items-center justify-center">
+                {children}
+              </main>
+            </div>
           </SidebarProvider>
         </ThemeProvider>
       </body>
