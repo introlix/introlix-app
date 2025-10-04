@@ -209,3 +209,7 @@ __marimo__/
 
 # Development scratchpad
 .scratchpad.md
+
+# Prevent ignoring frontend (React) folder
+!web/
+!web/**
