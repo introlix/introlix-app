@@ -1,7 +1,7 @@
 import json
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, Callable
+from typing import Any, Dict, List, Optional, Type, Callable, Union, AsyncGenerator
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
@@ -86,22 +86,46 @@ class BaseAgent(ABC):
         self.instruction = ""
         self.max_iterations = max_iterations
 
-    async def _call_llm(self, prompt: str, cloud: bool = True) -> str:
-        """Call LLM and return raw output"""
+    async def _call_llm(
+        self, 
+        prompt: str, 
+        cloud: bool = True, 
+        stream: bool = False
+    ) -> Union[str, AsyncGenerator[str, None]]:
+        """
+        Call LLM and return output
+        
+        Args:
+            prompt: The prompt to send
+            cloud: Whether to use cloud API (default: True)
+            stream: Whether to stream the response (default: False)
+            
+        Returns:
+            String if stream=False, AsyncGenerator if stream=True
+        """
         if cloud:
             from introlix.services.LLMState import LLMState
 
             llm_state = LLMState()
             response = await llm_state.get_open_router(
-                model_name=self.model, sys_prompt=self.instruction, user_prompt=prompt
+                model_name=self.model, 
+                sys_prompt=self.instruction, 
+                user_prompt=prompt,
+                stream=stream
             )
 
-            output = response.json()
-            try:
-                return output["choices"][0]["message"]["content"]
-            except:
-                return output
+            if stream:
+                # Return the generator directly for streaming
+                return response
+            else:
+                # Non-streaming response
+                output = response.json()
+                try:
+                    return output["choices"][0]["message"]["content"]
+                except:
+                    return output
         else:
+            # Local model (non-streaming only)
             output = self.model.create_chat_completion(
                 messages=[
                     {"role": "system", "content": self.instruction},
@@ -123,12 +147,12 @@ class BaseAgent(ABC):
                 )
         return raw_output
 
-    async def run(self, user_prompt: str) -> AgentOutput:
+    async def run(self, user_prompt: str, stream: bool = False) -> AgentOutput:
         """Run the agent"""
         state = {"history": [], "tool_results": {}}
         prompts = self._build_prompt(user_prompt, state)
         self.instruction = prompts.system_prompt
-        raw_output = await self._call_llm(prompts.user_prompt)
+        raw_output = await self._call_llm(prompts.user_prompt, stream=stream)
 
         try:
             parsed_output = await self._parse_output(raw_output)

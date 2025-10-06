@@ -5,7 +5,7 @@ import requests
 import json
 from fastapi import HTTPException
 from llama_cpp import Llama
-from typing import Optional
+from typing import Optional, AsyncGenerator, Union
 from introlix.config import MODEL_SAVE_DIR, OPEN_ROUTER_KEY
 
 class LLMState:
@@ -56,25 +56,83 @@ class LLMState:
                 )
 
     async def get_open_router(
-        self, model_name: str, sys_prompt: str, user_prompt
-    ):
-        response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPEN_ROUTER_KEY}",
-            },
-            data=json.dumps(
-                {
-                    "model": model_name,  # Optional
-                    "messages": [
-                        {"role": "system", "content": sys_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                }
-            ),
-        )
+        self, 
+        model_name: str, 
+        sys_prompt: str, 
+        user_prompt: str,
+        stream: bool = False
+    ) -> Union[requests.Response, AsyncGenerator[str, None]]:
+        """
+        Get response from OpenRouter API
+        
+        Args:
+            model_name: The model to use
+            sys_prompt: System prompt
+            user_prompt: User prompt
+            stream: Whether to stream the response (default: False)
+        
+        Returns:
+            Response object if stream=False, AsyncGenerator if stream=True
+        """
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "stream": stream
+        }
+        
+        if not stream:
+            # Non-streaming response
+            response = requests.post(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPEN_ROUTER_KEY}",
+                    "Content-Type": "application/json"
+                },
+                data=json.dumps(payload),
+            )
+            return response
+        else:
+            # Streaming response
+            response = requests.post(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPEN_ROUTER_KEY}",
+                    "Content-Type": "application/json"
+                },
+                data=json.dumps(payload),
+                stream=True
+            )
+            return self._stream_response(response)
 
-        return response
+    async def _stream_response(self, response: requests.Response) -> AsyncGenerator[str, None]:
+        """
+        Process streaming response from OpenRouter
+        
+        Args:
+            response: The streaming response object
+            
+        Yields:
+            Content chunks from the stream
+        """
+        for line in response.iter_lines():
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith('data: '):
+                    data = line[6:]  # Remove 'data: ' prefix
+                    if data == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        if 'choices' in chunk and len(chunk['choices']) > 0:
+                            delta = chunk['choices'][0].get('delta', {})
+                            content = delta.get('content', '')
+                            if content:
+                                yield content
+                    except json.JSONDecodeError:
+                        continue
 
     async def unload_model(self):
         """Unload the current model and free memory."""
