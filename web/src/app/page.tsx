@@ -1,17 +1,24 @@
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Dot, File, MessageCircle, Microscope, Search } from "lucide-react";
+import { ArrowRight, Dot, File, MessageCircle, Microscope, Plus, Search } from "lucide-react";
 import Link from "next/link";
 
+interface ProjectData {
+  id: string,
+  title: string,
+  url: string,
+  items: number,
+  updatedAt: string
+}
 
 export default function Home() {
 
-  const projectData = [
-    { id: 'a12', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    { id: '212', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    { id: '2b2', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    { id: '215', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
+  const projectData: ProjectData[] = [
+    // { id: 'a12', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
+    // { id: '212', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
+    // { id: '2b2', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
+    // { id: '215', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
   ]
   return (
     <main className="w-[80%] h-[80%]">
@@ -21,10 +28,10 @@ export default function Home() {
             <h3 className="font-bold">Recent Workspaces</h3>
             <span className="text-accent-foreground text-sm">Your latest work</span>
           </div>
-          <div className="">
+          {projectData.length > 0 ? <div className="">
             {projectData.map((item) => (
               <Link key={item.id} href={'/'}>
-                <Card className="bg-card">
+                <Card className="bg-card hover:bg-accent">
                   <CardContent className="">
                     <CardTitle>{item.title}</CardTitle>
                     <div className="flex text-xs text-muted-foreground items-center">
@@ -37,11 +44,14 @@ export default function Home() {
               </Link>
             ))}
             <Link href={'/workspaces'}><Button variant={'outline'} className="w-full mt-4 cursor-pointer">View All Workspaces <ArrowRight /></Button></Link>
+          </div> : <div className="flex justify-center items-center h-52">
+            <Button variant={'outline'} className="cursor-pointer"><Plus />New Workspace</Button>
           </div>
+          }
         </div>
       </div>
       <div className="mt-4 flex items-center justify-center">
-        <ButtonGroup className="space-x-2">
+        <ButtonGroup className="flex flex-wrap items-center gap-2">
           <Link href={'/deep-research'}><Button variant="outline" className="cursor-pointer"><Microscope /> Deep Research</Button></Link>
           <Link href={'/research-desk'}><Button variant="outline" className="cursor-pointer"><File />Research Desk</Button></Link>
           <Link href={'/chat'}><Button variant="outline" className="cursor-pointer"><MessageCircle />Chat</Button></Link>
