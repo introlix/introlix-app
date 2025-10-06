@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, JSX } from "react";
-import { ChevronDown, ArrowUp, Upload, Search, Bot, Check } from "lucide-react";
+import React, { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
+import { ChevronDown, ArrowUp, Upload, Search, Bot, Check, FileText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,19 +12,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// --- Types ---
 type ModelType = "Auto" | "GPT-5" | "Claude" | "Deepseek" | "Gemini";
 type AgentType = "Verifier" | "Knowledge Gap" | "Research Assistant" | "Code Reviewer" | null;
 
-export default function ChatInput(): JSX.Element {
-  const [message, setMessage] = useState<string>("");
-  const [isComposing, setIsComposing] = useState<boolean>(false);
+export default function ChatInput() {
+  const [message, setMessage] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelType>("Auto");
   const [selectedAgent, setSelectedAgent] = useState<AgentType>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [searchEnabled, setSearchEnabled] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const models: ModelType[] = ["Auto", "GPT-5", "Claude", "Deepseek", "Gemini"];
-  const agents: Exclude<AgentType, null>[] = ["Verifier", "Knowledge Gap", "Research Assistant", "Code Reviewer"];
+  const agents: Exclude<AgentType, null>[] = [
+    "Verifier",
+    "Knowledge Gap",
+    "Research Assistant",
+    "Code Reviewer",
+  ];
 
   // --- Auto-resize textarea ---
   useEffect(() => {
@@ -38,13 +45,16 @@ export default function ChatInput(): JSX.Element {
   // --- Handlers ---
   const handleSubmit = (): void => {
     const trimmed = message.trim();
-    if (!trimmed || isComposing) return;
+    if (!trimmed && selectedFiles.length === 0 && !searchEnabled) return;
 
-    console.log("Sending message:", trimmed);
+    console.log("Message:", trimmed);
+    console.log("Files:", selectedFiles);
+    console.log("Search enabled:", searchEnabled);
     console.log("Model:", selectedModel);
     console.log("Agent:", selectedAgent);
 
     setMessage("");
+    setSelectedFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -55,22 +65,29 @@ export default function ChatInput(): JSX.Element {
     }
   };
 
-  const handleChange = (e: ChangeEvent<HTMLTextAreaElement>): void => {
-    setMessage(e.target.value);
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const newFiles = Array.from(e.target.files);
+    // Limit to 4 total files
+    const combined = [...selectedFiles, ...newFiles].slice(0, 4);
+    setSelectedFiles(combined);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   // --- Render ---
   return (
     <div className="w-full h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-3xl">
-        {/* Input Container */}
         <div className="rounded-2xl border border-border bg-card shadow-sm">
           {/* Textarea */}
           <div className="p-4">
             <textarea
               ref={textareaRef}
               value={message}
-              onChange={handleChange}
+              onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               onCompositionStart={() => setIsComposing(true)}
               onCompositionEnd={() => setIsComposing(false)}
@@ -80,24 +97,55 @@ export default function ChatInput(): JSX.Element {
             />
           </div>
 
+          {/* File Preview */}
+          {selectedFiles.length > 0 && (
+            <div className="px-4 pb-2 flex flex-wrap items-center gap-2">
+              {selectedFiles.map((file, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-1 text-sm bg-secondary px-2 py-1 rounded-md"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="truncate max-w-[120px]">{file.name}</span>
+                  <button onClick={() => removeFile(index)}>
+                    <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Bottom Bar */}
           <div className="flex items-center justify-between px-4 pb-3 pt-2">
             {/* Left Actions */}
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Upload Files"
-                title="Upload Files"
-              >
-                <Upload className="h-4 w-4" />
-              </Button>
+              {/* Upload */}
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Upload Files"
+                  title="Upload Files"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </div>
 
+              {/* Search toggle */}
               <Button
-                variant="outline"
+                variant={searchEnabled ? "default" : "outline"}
                 size="icon"
-                aria-label="Search"
-                title="Search"
+                aria-label="Search Toggle"
+                title="Toggle Search Mode"
+                onClick={() => setSearchEnabled((prev) => !prev)}
               >
                 <Search className="h-4 w-4" />
               </Button>
@@ -124,11 +172,15 @@ export default function ChatInput(): JSX.Element {
                   {agents.map((agent) => (
                     <DropdownMenuItem
                       key={agent}
-                      onClick={() => setSelectedAgent(agent === selectedAgent ? null : agent)}
+                      onClick={() =>
+                        setSelectedAgent(agent === selectedAgent ? null : agent)
+                      }
                       className="flex items-center justify-between"
                     >
                       <span>{agent}</span>
-                      {selectedAgent === agent && <Check className="h-4 w-4 text-primary" />}
+                      {selectedAgent === agent && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
                     </DropdownMenuItem>
                   ))}
                   {selectedAgent && (
@@ -171,7 +223,9 @@ export default function ChatInput(): JSX.Element {
                       className="flex items-center justify-between"
                     >
                       <span>{model}</span>
-                      {selectedModel === model && <Check className="h-4 w-4 text-primary" />}
+                      {selectedModel === model && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
