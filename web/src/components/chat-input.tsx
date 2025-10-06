@@ -79,7 +79,7 @@ export default function ChatInput() {
 
   // --- Render ---
   return (
-    <div className="w-full h-screen flex items-center justify-center p-4">
+    <div className="w-full flex">
       <div className="w-full max-w-3xl">
         <div className="rounded-2xl border border-border bg-card shadow-sm">
           {/* Textarea */}
