@@ -135,7 +135,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="deepseek/deepseek-chat-v3.1:free",
+            model="meta-llama/llama-4-maverick:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -292,47 +292,59 @@ class ExplorerAgent:
             # If not asking for answers, just crawl and save data
             await self.get_and_save_data(queries_to_search)
             return None
-
-
+        
     async def get_and_save_data(self, queries: list = None):
         """
-        Modified to accept specific queries to process
+        Getting data from internet and saving it
         
         Args:
             queries: List of queries to process. If None, uses self.queries
         """
         records = []
         BATCH_SIZE = 96
-        
         queries_to_process = queries if queries else self.queries
 
-        for query in queries_to_process:
+        async def process_query(query: str):
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
 
-            # Process all URLs concurrently for this query
+            # Crawl URLs concurrently for this query
             crawl_tasks = []
             for result in search_results:
                 url = result.url
                 if self.is_url_exists(url):
                     continue
                 crawl_tasks.append(self._crawl_and_chunk(url))
-            
-            # Wait for all crawls to complete for this query
-            query_records = await asyncio.gather(*crawl_tasks, return_exceptions=True)
-            
-            # Filter out errors and flatten the list
-            for record_list in query_records:
-                if isinstance(record_list, list):
-                    records.extend(record_list)
-                elif isinstance(record_list, Exception):
-                    print(f"Error during crawling: {record_list}")
 
-        # Batch upsert all records
+            query_records = await asyncio.gather(*crawl_tasks, return_exceptions=True)
+
+            # Flatten and filter errors
+            flat_records = []
+            for rec_list in query_records:
+                if isinstance(rec_list, list):
+                    flat_records.extend(rec_list)
+                elif isinstance(rec_list, Exception):
+                    print(f"Error during crawling: {rec_list}")
+
+            return flat_records
+
+        # Run all queries concurrently
+        all_query_results = await asyncio.gather(
+            *[process_query(q) for q in queries_to_process],
+            return_exceptions=True
+        )
+
+        # Flatten all records
+        for q_res in all_query_results:
+            if isinstance(q_res, list):
+                records.extend(q_res)
+            elif isinstance(q_res, Exception):
+                print(f"Error during query processing: {q_res}")
+
+        # Batch upsert to Pinecone
         if records:
             for i in range(0, len(records), BATCH_SIZE):
                 batch = records[i:i + BATCH_SIZE]
                 self.index.upsert_records(self.unique_id, batch)
-            print(f"Successfully saved {len(records)} records to Pinecone")
 
 
     async def _crawl_and_chunk(self, url: str) -> list:
@@ -377,6 +389,6 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["AI diagnostic accuracy improvement percentage 2024", "What was the first computer?"], unique_id="user1", get_answer=True, get_multiple_answer=False, max_results=5)
+    explorer_agent = ExplorerAgent(queries=["Who is pm of Nepal?"], unique_id="user4", get_answer=True, get_multiple_answer=False, max_results=2)
     result = asyncio.run(explorer_agent.run())
     print(result)
