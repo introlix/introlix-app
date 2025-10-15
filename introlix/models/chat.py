@@ -8,3 +8,4 @@ class ChatRequest(BaseModel):
     model: str
     search: bool
     agent: str
+    workspace_id: str

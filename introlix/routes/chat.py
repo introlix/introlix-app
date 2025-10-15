@@ -1,15 +1,10 @@
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from introlix.models.chat import ChatRequest, ChatResponse
-from introlix.agents.base_agent import Agent, AgentInput
+from introlix.agents.chat_agent import ChatAgent
 
 chat_router = APIRouter(prefix='/chat')
 
-chat_config = AgentInput(
-    name="Introlix Chat",
-    description="Chat with user",
-    output_type=ChatResponse
-)
 
 @chat_router.post('/')
 async def chat(request: ChatRequest):
@@ -19,11 +14,18 @@ async def chat(request: ChatRequest):
     else:
         model = request.model
 
-    chat_agent = Agent(
-        model=model,
-        instruction="You are a chat bot",
-        output_model_class=ChatResponse,
-        config=chat_config
+    chat_agent = ChatAgent(
+        unique_id=request.workspace_id,
+        model=model
+
     )
 
-    return await chat_agent.run(user_prompt=request.prompt)
+    if request.search:
+        user_prompt = f"{request.prompt}\nSearch on the internet."
+    else:
+        user_prompt = request.prompt
+
+    async def stream():
+        async for chunk in chat_agent.arun(user_prompt):
+            yield chunk
+    return StreamingResponse(stream(), media_type="text/plain")

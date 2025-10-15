@@ -42,6 +42,7 @@ Notes:
 
 import asyncio
 import hashlib
+from datetime import datetime
 from pinecone import Pinecone
 from pydantic import BaseModel, Field
 from introlix.config import PINECONE_KEY
@@ -63,26 +64,28 @@ class ExplorerAgentOutput(BaseModel):
         description="What is the type of the sources. e.g: academic, news, blog, government, commercial"
     )
 
-INSTRUCTION = """
+INSTRUCTION = f"""
 You are an explorer agent. Your task is to analyze the content from a website and return a summary of the page according to the user query.
 The summary should contain the exact answer the user is looking for. The summary should be detailed and should answer the user query.
 Make sure to use all the available sites content.
+
+Today's date is {datetime.now().strftime("%Y-%m-%d")}
 
 ## CRITICAL: Output Format
 You MUST respond with ONLY a valid JSON object. Follow these rules STRICTLY:
 - NO markdown code blocks like ```json
 - NO extra text before or after the JSON
-- Just pure JSON
+- Just pure JSON don't add any token like <｜begin▁of▁sentence｜>.
 
 Required JSON structure:
-{
+{{
     "topic": "The topic of the research",
     "title": "The title of the web page",
     "urls": "The url of the web page",
     "summary": "Detailed summary of the page according to the topic",
     "relevance_score": 0.85,
     "source_type": "academic"
-}
+}}
 
 ## Field Definitions:
 - topic (string): The research topic being explored
@@ -94,19 +97,22 @@ Required JSON structure:
 
 ## Special Cases:
 - If no relevant content is found, return:
-  {
+  {{
     "topic": "provided topic",
     "title": ["No Data Found"],
     "urls": [""],
     "summary": "No Data Found",
     "relevance_score": 0.0,
     "source_type": "commercial"
-  }
+  }}
 
 ## REMEMBER: 
 - Output ONLY the JSON object
 - No additional text, explanations, or formatting
-- Start your response with { and end with }
+- Start your response with {{ and end with }}
+
+Note: Make sure the result is always upto date. If result is not up to date then again result same data when returning no relevent contnet is found in same json format.
+Note: If the title of the website does not match or is not good then don't get data from that website and return again same no relevant json data.
 """
 
 class ExplorerAgent:
@@ -135,7 +141,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="meta-llama/llama-4-maverick:free",
+            model="deepseek/deepseek-chat-v3.1:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -389,6 +395,7 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["Who is pm of Nepal?"], unique_id="user4", get_answer=True, get_multiple_answer=False, max_results=2)
-    result = asyncio.run(explorer_agent.run())
-    print(result)
+    explorer_agent = ExplorerAgent(queries=["Who is CEO of OPENAI?"], unique_id="user1", get_answer=True, get_multiple_answer=False, max_results=2)
+    results = asyncio.run(explorer_agent.run())
+    for result in results:
+        print(result.summary)
