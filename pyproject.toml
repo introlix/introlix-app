@@ -25,6 +25,7 @@ dependencies = [
     "pdfplumber>=0.11.7",
     "tiktoken>=0.11.0",
     "pinecone>=7.3.0",
+    "motor>=3.7.1"
 ]
 [tool.setuptools.packages.find]
 include = ["introlix*"]

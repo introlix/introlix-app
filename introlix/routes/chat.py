@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from introlix.models.chat import ChatRequest, ChatResponse
+from introlix.models import ChatRequest, ChatResponse
 from introlix.agents.chat_agent import ChatAgent
 
 chat_router = APIRouter(prefix='/chat')

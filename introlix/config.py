@@ -9,6 +9,7 @@ load_dotenv()
 OPEN_ROUTER_KEY = os.environ["OPEN_ROUTER_KEY"]
 SEARCHXNG_HOST = os.environ["SEARCHXNG_HOST"]
 PINECONE_KEY = os.environ["PINECONE_KEY"]
+MONGO_URI = os.environ["MONGO_URI"]
 
 # App Info
 APP_NAME = "introlix"
