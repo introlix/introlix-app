@@ -141,7 +141,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="deepseek/deepseek-chat-v3.1:free",
+            model="meta-llama/llama-3.3-70b-instruct:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config

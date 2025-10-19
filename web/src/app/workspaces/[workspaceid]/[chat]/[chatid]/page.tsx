@@ -1,7 +1,8 @@
 interface ChatProps {
-  params: { chatId: string }
+  params: { chatid: string }
 }
 
-export default function ChatDetailPage({ params }: ChatProps) {
-  return <h1>Chat ID: {params.chatId}</h1>
+export default async function ChatDetailPage({ params }: ChatProps) {
+  const { chatid } = await params
+  return <h1>Chat ID: {chatid}</h1>
 }

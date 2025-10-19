@@ -107,10 +107,13 @@ class BaseAgent(ABC):
             from introlix.services.LLMState import LLMState
 
             llm_state = LLMState()
+            messages = [
+                {"role": "system", "content": self.instruction},
+                {"role": "user", "content": prompt}
+            ]
             response = await llm_state.get_open_router(
                 model_name=self.model, 
-                sys_prompt=self.instruction, 
-                user_prompt=prompt,
+                messages=messages,
                 stream=stream
             )
 

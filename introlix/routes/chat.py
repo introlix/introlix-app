@@ -1,23 +1,87 @@
-from fastapi import APIRouter
+from datetime import datetime
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from introlix.models import ChatRequest, ChatResponse
+from introlix.models import ChatRequest
 from introlix.agents.chat_agent import ChatAgent
+from introlix.models import WorkspaceChat, Message
+from introlix.database import db, serialize_doc, validate_object_id
+from introlix.services.LLMState import LLMState
 
-chat_router = APIRouter(prefix='/chat')
+chat_router = APIRouter(prefix='/workspace/{workspace_id}/chat', tags=['chat'])
+llm_state = LLMState()
 
+@chat_router.post('/new')
+async def create_chat(workspace_id: str, request: WorkspaceChat):
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
 
-@chat_router.post('/')
-async def chat(request: ChatRequest):
-    model = ""
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    request.workspace_id = workspace_id
+    item_dict = request.model_dump()
+    result = await db.workspace_items.insert_one(item_dict)
+    return {"message": "Chat created", "_id": str(result.inserted_id)}
+
+@chat_router.post('/{chat_id}/')
+async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
+    chat = await db.workspace_items.find_one({"_id": validate_object_id(chat_id)})
+
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    title = chat.get("title")
+
+    if not title:
+        # Title is missing, set it
+        messages = [
+            {"role": "system", "content": "You are a title generator for chatbot. Your task is to generate best by seeing user prompt. Don't response with any exta token. Just give a simple title."},
+            {"role": "user", "content": request.prompt}
+        ]
+        response = await llm_state.get_open_router(
+            model_name="qwen/qwen3-4b:free", 
+            messages=messages,
+            stream=False
+        )
+        output = response.json()
+        
+        try:
+            new_title = output["choices"][0]["message"]["content"]
+        except:
+            new_title = output
+
+        await db.workspace_items.update_one(
+            {"_id": chat["_id"]},
+            {"$set": {"title": new_title}}
+        )
+    
     if request.model == "auto":
-        model = "deepseek/deepseek-chat-v3.1:free"
+        model = "meta-llama/llama-3.3-70b-instruct:free"
     else:
         model = request.model
 
-    chat_agent = ChatAgent(
-        unique_id=request.workspace_id,
-        model=model
+    # Load chat history from database
+    messages = chat.get("messages", [])
 
+    # Create user message
+    user_message = Message(
+        role="user",
+        content=request.prompt,
+        created_at=datetime.now()
+    )
+
+    # Add user message to database
+    await db.workspace_items.update_one(
+        {"_id": chat["_id"]},
+        {
+            "$push": {"messages": user_message.model_dump()},
+            "$set": {"updated_at": datetime.now()}
+        }
+    )
+
+    # Initialize chat agent with history
+    chat_agent = ChatAgent(
+        unique_id=workspace_id, # This takes workspace_id as data are shared in between workspace
+        model=model,
+        conversation_history=messages
     )
 
     if request.search:
@@ -25,7 +89,38 @@ async def chat(request: ChatRequest):
     else:
         user_prompt = request.prompt
 
+    # Collect assistant response
+    assistant_content = ""
     async def stream():
+        nonlocal assistant_content
         async for chunk in chat_agent.arun(user_prompt):
+            assistant_content += chunk
             yield chunk
+
+        # After streaming completes, save assistant message
+        assistant_message = Message(
+            role="assistant",
+            content=assistant_content,
+            created_at=datetime.now(),
+            model=model
+        )
+
+        await db.workspace_items.update_one(
+            {"_id": chat["_id"]},
+            {
+                "$push": {"messages": assistant_message.model_dump()},
+                "$set": {"updated_at": datetime.now()}
+            }
+        )
+            
     return StreamingResponse(stream(), media_type="text/plain")
+
+@chat_router.delete('/{chat_id}/')
+async def delete_chat(chat_id: str):
+    """Delete a chat and its history"""
+    result = await db.workspace_items.delete_one({"_id": validate_object_id(chat_id)})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    
+    return {"message": "Chat deleted successfully"}

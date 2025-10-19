@@ -75,6 +75,7 @@ class ChatAgent(BaseAgent):
         model: str,
         config: Optional[AgentInput] = None,
         max_iterations=5,
+        conversation_history: Optional[List[Dict]] = None,
     ):
 
         if config is None:
@@ -89,6 +90,7 @@ class ChatAgent(BaseAgent):
         self.tools = [{"name": "search", "description": "Search on internet."}]
 
         self.sys_prompt = INSTRUCTION.format(tools=self.tools)
+        self.conversation_history = conversation_history or []
 
     def _create_tools(self):
         async def search(queries: List[str] = None, query: str = None) -> str:
@@ -112,12 +114,32 @@ class ChatAgent(BaseAgent):
 
             formatted = []
             for result in results:
-                formatted.append(
-                    f"Topic: {result.topic}\n"
-                    f"Summary: {result.summary}\n"
-                    f"Sources: {', '.join(result.urls)}\n"
-                    f"Relevance: {result.relevance_score}"
-                )
+                try:
+                    if hasattr(result, 'summary'):
+                        # It's an object
+                        formatted.append(
+                            f"Topic: {result.topic}\n"
+                            f"Summary: {result.summary}\n"
+                            f"Sources: {', '.join(result.urls)}\n"
+                            f"Relevance: {result.relevance_score}"
+                        )
+                    elif isinstance(result, dict):
+                        # It's a dict
+                        formatted.append(
+                            f"Topic: {result.get('topic', 'N/A')}\n"
+                            f"Summary: {result.get('summary', 'N/A')}\n"
+                            f"Sources: {', '.join(result.get('urls', []))}\n"
+                            f"Relevance: {result.get('relevance_score', 'N/A')}"
+                        )
+                    else:
+                        # Unknown format, convert to string
+                        formatted.append(f"Result: {str(result)}")
+                except Exception as e:
+                    formatted.append(f"Error processing result: {str(e)}")
+
+            if not formatted:
+                return "No results found"
+            
             return "\n\n---\n\n".join(formatted)
 
         return [
@@ -128,65 +150,110 @@ class ChatAgent(BaseAgent):
             )
         ]
 
-    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
-        # Build user prompt with history
-        user_prompt_parts = [f"User Query: {user_prompt}"]
-
-        # Add tool results if any
+    def _build_messages_array(self, user_prompt: str, state: Dict[str, Any]) -> List[Dict]:
+        """Build messages array like ChatGPT (OpenAI format)"""
+        messages = [
+            {"role": "system", "content": self.sys_prompt}
+        ]
+        
+        # Add conversation history (last 10 messages to manage tokens)
+        recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
+        
+        for msg in recent_history:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role in ["user", "assistant"] and content:
+                messages.append({"role": role, "content": content})
+        
+        # Build current user prompt with tool results if any
+        current_prompt_parts = [f"User Query: {user_prompt}"]
+        
         if state.get("tool_results"):
-            user_prompt_parts.append("\nPrevious Tool Results:")
+            current_prompt_parts.append("\nTool Results:")
             for tool_name, result in state["tool_results"].items():
-                user_prompt_parts.append(f"\n{tool_name}:\n{result}")
-
-        # Add history context
+                current_prompt_parts.append(f"\n{tool_name}:\n{result}")
+        
         if state.get("history"):
             last_step = state["history"][-1]
             if last_step.get("parsed"):
                 parsed = last_step["parsed"]
                 if isinstance(parsed, dict) and parsed.get("needs_more_info"):
-                    user_prompt_parts.append(
+                    current_prompt_parts.append(
                         "\n\nYou indicated you need more info. What do you need next?"
                     )
+        
+        current_prompt_parts.append("\n\nYour decision (respond in JSON):")
+        
+        messages.append({
+            "role": "user",
+            "content": "\n".join(current_prompt_parts)
+        })
+        
+        return messages
 
-        user_prompt_parts.append("\n\nYour decision (respond in JSON):")
-
-        return PromptTemplate(
-            system_prompt=self.sys_prompt, user_prompt="\n".join(user_prompt_parts)
+    async def _call_llm_with_messages(
+        self, 
+        messages: List[Dict], 
+        stream: bool = False
+    ):
+        """Call LLM with messages array (ChatGPT style)"""
+        from introlix.services.LLMState import LLMState
+        
+        llm_state = LLMState()
+        response = await llm_state.get_open_router(
+            model_name=self.model, 
+            messages=messages,
+            stream=stream
         )
+        
+        if stream:
+            return response
+        else:
+            output = response.json()
+            try:
+                return output["choices"][0]["message"]["content"]
+            except:
+                return output
+
+    def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
+        """Legacy method - not used in arun anymore"""
+        pass
 
     async def arun(self, user_prompt: str) -> AsyncGenerator[str, None]:
         state = {"history": [], "tool_results": {}}
 
         for iteration in range(self.max_iterations):
-            prompts = self._build_prompt(user_prompt, state)
-            self.instruction = prompts.system_prompt
+            messages = self._build_messages_array(user_prompt, state)
 
             yield f"\n🤔 **Thinking** (Iteration {iteration + 1})...\n"
 
             # Call LLM (non-streaming for decision)
-            raw_output = await self._call_llm(prompts.user_prompt, stream=False)
+            raw_output = await self._call_llm_with_messages(messages=messages, stream=False)
             
-            # Cleaning the raw_output
-            raw_output = raw_output.strip()
+            try:
+                # Cleaning the raw_output
+                raw_output = raw_output.strip()
 
-            if '<｜begin▁of▁sentence｜>' in raw_output:
-                raw_output = raw_output.replace('<｜begin▁of▁sentence｜>', '')
+                if '<｜begin▁of▁sentence｜>' in raw_output:
+                    raw_output = raw_output.replace('<｜begin▁of▁sentence｜>', '')
 
-            if '<｜end▁of▁sentence｜>' in raw_output:
-                raw_output = raw_output.replace('<｜end▁of▁sentence｜>', '')
+                if '<｜end▁of▁sentence｜>' in raw_output:
+                    raw_output = raw_output.replace('<｜end▁of▁sentence｜>', '')
 
-            # Remove any trailing special characters
-            raw_output = raw_output.strip().rstrip('<｜').rstrip('▁')
+                # Remove any trailing special characters
+                raw_output = raw_output.strip().rstrip('<｜').rstrip('▁')
 
-            # Extract JSON from markdown if present
-            if "```json" in raw_output:
-                json_start = raw_output.find("```json") + 7
-                json_end = raw_output.find("```", json_start)
-                raw_output = raw_output[json_start:json_end].strip()
-            elif "```" in raw_output:
-                json_start = raw_output.find("```") + 3
-                json_end = raw_output.find("```", json_start)
-                raw_output = raw_output[json_start:json_end].strip()
+                # Extract JSON from markdown if present
+                if "```json" in raw_output:
+                    json_start = raw_output.find("```json") + 7
+                    json_end = raw_output.find("```", json_start)
+                    raw_output = raw_output[json_start:json_end].strip()
+                elif "```" in raw_output:
+                    json_start = raw_output.find("```") + 3
+                    json_end = raw_output.find("```", json_start)
+                    raw_output = raw_output[json_start:json_end].strip()
+            except:
+                pass
                 
             # Parse decision
             try:
@@ -234,20 +301,37 @@ class ChatAgent(BaseAgent):
                 # Phase 3: Generate final answer with streaming
                 yield f"\n**Generating answer**...\n\n"
 
-                final_prompt = [f"User asked: {user_prompt}\n"]
-                final_prompt.append("\nTool Results:")
-
+                final_messages = [
+                    {
+                        "role": "system", 
+                        "content": "You are a helpful AI assistant. Provide a clear, comprehensive answer based on the search results and conversation context. In the end of answer always include source if the data is from search. If no source is given then don't give source at the end."
+                    }
+                ]
+                # Add conversation history
+                recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
+                for msg in recent_history:
+                    role = msg.get("role")
+                    content = msg.get("content")
+                    if role in ["user", "assistant"] and content:
+                        final_messages.append({"role": role, "content": content})
+                
+                # Add current query and tool results
+                final_prompt_parts = [f"User asked: {user_prompt}\n"]
+                final_prompt_parts.append("\nTool Results:")
                 for tool_name, result in state["tool_results"].items():
-                    final_prompt.append(f"\nOutput From {tool_name} Tool: {result}")
-
-                final_prompt.append(
-                    "\n\nProvide a comprehensive answer to the user's question based on these search results."
+                    final_prompt_parts.append(f"\nOutput From {tool_name} Tool: {result}")
+                
+                final_prompt_parts.append(
+                    "\n\nProvide a comprehensive answer to the user's question based on these search results and conversation history."
                 )
-                final_prompt = "\n".join(final_prompt)
+                
+                final_messages.append({
+                    "role": "user",
+                    "content": "\n".join(final_prompt_parts)
+                })
 
-                self.instruction = "You are a helpful AI assistant. Provide a clear, comprehensive answer based on the search results. In the end of answer always include source if the data is from search. If not source is given then don't give source at the end."
-
-                response_stream = await self._call_llm(final_prompt, stream=True)
+                # Stream the final response
+                response_stream = await self._call_llm_with_messages(final_messages, stream=True)
 
                 async for chunk in response_stream:
                     yield chunk
@@ -256,9 +340,9 @@ class ChatAgent(BaseAgent):
 
 
 async def main():
-    agent = ChatAgent(unique_id="user1", model="deepseek/deepseek-chat-v3.1:free")
+    agent = ChatAgent(unique_id="user1", model="meta-llama/llama-3.3-70b-instruct:free")
 
-    async for chunk in agent.arun("Who is CEO of OpenAI?"):
+    async for chunk in agent.arun("Best LLM of 2025?"):
         print(chunk, end="", flush=True)
 
 

@@ -272,7 +272,7 @@ class VerifyReportAgent:
 
         # Initialize the agent with loop support for tool usage
         self.verify_report_agent = ToolEnabledAgent(
-            model="deepseek/deepseek-chat-v3.1:free",
+            model="meta-llama/llama-3.3-70b-instruct:free",
             instruction=self.INSTRUCTIONS,
             output_model_class=VerifyReportAgentOutput,
             config=self.agent_config,

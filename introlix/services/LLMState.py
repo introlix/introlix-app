@@ -58,8 +58,7 @@ class LLMState:
     async def get_open_router(
         self, 
         model_name: str, 
-        sys_prompt: str, 
-        user_prompt: str,
+        messages: list,
         stream: bool = False
     ) -> Union[requests.Response, AsyncGenerator[str, None]]:
         """
@@ -76,10 +75,7 @@ class LLMState:
         """
         payload = {
             "model": model_name,
-            "messages": [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            "messages": messages,
             "stream": stream
         }
         

@@ -1,19 +1,11 @@
 from bson import ObjectId
 from fastapi import FastAPI, HTTPException, Query
-from introlix.database import db, serialize_doc
+from introlix.database import db, serialize_doc, validate_object_id
 from introlix.models import Workspace, WorkspaceItem
 from introlix.schemas import PaginatedResponse
 from introlix.routes.chat import chat_router
 from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
-
-
-# Helper function to validate ObjectId
-def validate_object_id(id: str) -> ObjectId:
-    try:
-        return ObjectId(id)
-    except:
-        raise HTTPException(status_code=400, detail="Invalid ID format")
 
 app = FastAPI(title="Introlix OS", openapi_prefix='/api/v1')
 
