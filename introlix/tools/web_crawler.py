@@ -71,7 +71,7 @@ async def fetch_page(url: str) -> tuple[str, bool]:
     }
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         try:
-            async with session.get(url, timeout=30) as response:
+            async with session.get(url, timeout=5) as response:
                 if response.status == 200:
                     content_type = response.headers.get("Content-Type", "").lower()
                     is_pdf = "application/pdf" in content_type
@@ -101,7 +101,7 @@ async def extract_pdf_text(pdf_content: bytes) -> tuple[str, str, str]:
             # Use first few lines as description (if available)
             description_lines = [line.strip() for line in text.split("\n")[:5] if line.strip()]
             description = " ".join(description_lines[:3])[:200]  # Limit to 200 chars
-            return text, title, description
+        return text, title, description
     except Exception as e:
         print(f"Error extracting PDF content: {str(e)}")
         return "", "", ""
@@ -147,15 +147,15 @@ async def web_crawler(url: str) -> Union[ScrapeResult, str]:
         #     pass
 
         # Getting main content
-        downloaded = trafilatura.fetch_url(url)
         title, description, text = "", "", ""
-        if downloaded:
-            data = trafilatura.extract(downloaded, output_format="json", with_metadata=True)
-            if data:
-                parsed = json.loads(data)
-                title = parsed.get("title") or ""
-                description = parsed.get("description") or ""
-                text = parsed.get("text") or ""
+        tf_ext_time = 0.0
+ 
+        data = trafilatura.extract(html_content, url=url, output_format="json", with_metadata=True)
+        if data:
+            parsed = json.loads(data)
+            title = parsed.get("title") or ""
+            description = parsed.get("description") or ""
+            text = parsed.get("text") or ""
     
     return ScrapeResult(
         url=url,

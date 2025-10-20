@@ -79,7 +79,7 @@ config = AgentInput(
 )
 
 filter_agent = Agent(
-    model="qwen/qwen3-30b-a3b:free",
+    model="meta-llama/llama-4-maverick:free",
     instruction=FILTER_AGENT_INSTRUCTIONS,
     config=config,
     output_model_class=SearchResults,
@@ -124,15 +124,15 @@ class SearXNGClient:
             async with session.get(self.host, params=params) as response:
                 response.raise_for_status()
                 results = await response.json()
-
-                results_list = [
-                    WebpageSnippet(
-                        url=result.get("url", ""),
-                        title=result.get("title", ""),
-                        description=result.get("content", ""),
-                    )
-                    for result in results.get("results", [])
-                ]
+            
+            results_list = [
+                WebpageSnippet(
+                    url=result.get("url", ""),
+                    title=result.get("title", ""),
+                    description=result.get("content", ""),
+                )
+                for result in results.get("results", [])
+            ]
 
         return (
             await self._filter_results(results_list, query, max_results)

@@ -42,6 +42,7 @@ Notes:
 
 import asyncio
 import hashlib
+from datetime import datetime
 from pinecone import Pinecone
 from pydantic import BaseModel, Field
 from introlix.config import PINECONE_KEY
@@ -63,26 +64,28 @@ class ExplorerAgentOutput(BaseModel):
         description="What is the type of the sources. e.g: academic, news, blog, government, commercial"
     )
 
-INSTRUCTION = """
+INSTRUCTION = f"""
 You are an explorer agent. Your task is to analyze the content from a website and return a summary of the page according to the user query.
 The summary should contain the exact answer the user is looking for. The summary should be detailed and should answer the user query.
 Make sure to use all the available sites content.
+
+Today's date is {datetime.now().strftime("%Y-%m-%d")}
 
 ## CRITICAL: Output Format
 You MUST respond with ONLY a valid JSON object. Follow these rules STRICTLY:
 - NO markdown code blocks like ```json
 - NO extra text before or after the JSON
-- Just pure JSON
+- Just pure JSON don't add any token like <｜begin▁of▁sentence｜>.
 
 Required JSON structure:
-{
+{{
     "topic": "The topic of the research",
     "title": "The title of the web page",
     "urls": "The url of the web page",
     "summary": "Detailed summary of the page according to the topic",
     "relevance_score": 0.85,
     "source_type": "academic"
-}
+}}
 
 ## Field Definitions:
 - topic (string): The research topic being explored
@@ -94,19 +97,22 @@ Required JSON structure:
 
 ## Special Cases:
 - If no relevant content is found, return:
-  {
+  {{
     "topic": "provided topic",
     "title": ["No Data Found"],
     "urls": [""],
     "summary": "No Data Found",
     "relevance_score": 0.0,
     "source_type": "commercial"
-  }
+  }}
 
 ## REMEMBER: 
 - Output ONLY the JSON object
 - No additional text, explanations, or formatting
-- Start your response with { and end with }
+- Start your response with {{ and end with }}
+
+Note: Make sure the result is always upto date. If result is not up to date then again result same data when returning no relevent contnet is found in same json format.
+Note: If the title of the website does not match or is not good then don't get data from that website and return again same no relevant json data.
 """
 
 class ExplorerAgent:
@@ -135,7 +141,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="deepseek/deepseek-chat-v3.1:free",
+            model="meta-llama/llama-3.3-70b-instruct:free",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -164,24 +170,35 @@ class ExplorerAgent:
         
         self.index = self.pc.Index(self.index_name)
     
-    async def run(self, retry: int = 0, max_retries: int = 5):
+    async def run(self, retry: int = 0, max_retries: int = 5, queries_to_process: list = None):
+        """
+        Fixed version that handles each query independently
+        
+        Args:
+            retry: Current retry count
+            max_retries: Maximum number of retries
+            queries_to_process: Specific queries to process (used in retries)
+        """
         if retry > max_retries:
             return ExplorerAgentOutput(
                 topic="",
-                title="",
-                url="",
+                title=[],
+                urls=[],
                 summary="",
                 relevance_score=0,
                 source_type="",
-                credibility_indicators=""
             )
+        
+        # Use provided queries or default to all queries
+        queries_to_search = queries_to_process if queries_to_process else self.queries
         
         # checking if user asked for answer
         if self.get_answer or self.get_multiple_answer:
             all_answers = []
+            queries_needing_data = []  # Track which queries need new data
             
             # Process each query separately
-            for query in self.queries:
+            for query in queries_to_search:
                 results = []
                 results_ = self.index.search(
                     namespace=self.unique_id,
@@ -205,6 +222,11 @@ class ExplorerAgent:
                     }
                     results.append(data)
                 
+                # Check if we found any results for this query
+                if not results:
+                    queries_needing_data.append(query)
+                    continue
+                
                 if self.get_answer and not self.get_multiple_answer:
                     # Get single best answer for this query
                     user_prompt = f"""
@@ -217,9 +239,13 @@ class ExplorerAgent:
                     
                     if answer.result.summary != "No Data Found":
                         all_answers.append(answer.result)
+                    else:
+                        # Even though we had results, the LLM said "No Data Found"
+                        queries_needing_data.append(query)
                 
                 elif self.get_answer and self.get_multiple_answer:
                     # Get multiple answers for this query
+                    query_had_valid_answer = False
                     for result in results:
                         user_prompt = f"""
                         The user query:
@@ -230,64 +256,138 @@ class ExplorerAgent:
                         answer = await self.explorer_agent.run(user_prompt)
                         if answer.result.summary != "No Data Found":
                             all_answers.append(answer.result)
+                            query_had_valid_answer = True
+                    
+                    # If none of the results produced valid answers, mark for retry
+                    if not query_had_valid_answer:
+                        queries_needing_data.append(query)
             
-            # If no valid answers found, get new data and retry
-            if len(all_answers) == 0:
-                await self.get_and_save_data()
-                return await self.run(retry + 1)
+            # If some queries need new data, fetch it and retry ONLY those queries
+            if queries_needing_data:
+                await self.get_and_save_data(queries_needing_data)
+                
+                # Wait a bit for data to be indexed
+                await asyncio.sleep(2)
+                
+                # Recursively process only the queries that needed data
+                retry_results = await self.run(
+                    retry=retry + 1, 
+                    max_retries=max_retries,
+                    queries_to_process=queries_needing_data
+                )
+                
+                # Combine results from successful queries and retried queries
+                if isinstance(retry_results, list):
+                    all_answers.extend(retry_results)
+                elif retry_results.summary:  # Single result
+                    all_answers.append(retry_results)
             
-            # Return single answer or list based on mode
-            if self.get_answer and not self.get_multiple_answer:
-                return all_answers  # List of answers, one per query
-            else:
-                return all_answers  # List of all answers from all queries
+            # Return results based on mode
+            if not all_answers:
+                return ExplorerAgentOutput(
+                    topic="",
+                    title=[],
+                    urls=[],
+                    summary="No valid data found after retries",
+                    relevance_score=0,
+                    source_type="commercial",
+                )
+            
+            return all_answers
         else:
-            await self.get_and_save_data()
-
-        # IF needed then run the verifier agent to verify the answer
-        # If needed then return the one single answer or multiple answers based on the get_multiple_answer flag
-        # If not answer needed then return the crawled result with source details
-
-    async def get_and_save_data(self):
+            # If not asking for answers, just crawl and save data
+            await self.get_and_save_data(queries_to_search)
+            return None
+        
+    async def get_and_save_data(self, queries: list = None):
+        """
+        Getting data from internet and saving it
+        
+        Args:
+            queries: List of queries to process. If None, uses self.queries
+        """
         records = []
         BATCH_SIZE = 96
+        queries_to_process = queries if queries else self.queries
 
-        for query in self.queries:
+        async def process_query(query: str):
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
 
-            for result in search_results: # TODO: Run in parallel
-                print(result)
+            # Crawl URLs concurrently for this query
+            crawl_tasks = []
+            for result in search_results:
                 url = result.url
                 if self.is_url_exists(url):
                     continue
+                crawl_tasks.append(self._crawl_and_chunk(url))
 
-                crawled_result = await web_crawler(url=url) # TODO: Run in parallel
+            query_records = await asyncio.gather(*crawl_tasks, return_exceptions=True)
 
-                if isinstance(crawled_result, str):  # Error message returned
-                    print(f"Failed to crawl {url}: {crawled_result}")
-                    continue
+            # Flatten and filter errors
+            flat_records = []
+            for rec_list in query_records:
+                if isinstance(rec_list, list):
+                    flat_records.extend(rec_list)
+                elif isinstance(rec_list, Exception):
+                    print(f"Error during crawling: {rec_list}")
 
-                # dividing the crawled_result into chunks
-                chunker = TextChunker(chunk_size=400, overlap=50)
-                chunks = chunker.chunk_text(crawled_result.text if isinstance(crawled_result, ScrapeResult) else crawled_result)
+            return flat_records
 
-                # Save Chunks To Vector DB
-                chunks = [
-                    {
-                        "_id" : f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
-                        "title": crawled_result.title,
-                        "description": crawled_result.description,
-                        "url": crawled_result.url,
-                        "chunk_id": chunk['chunk_id'],
-                        "chunk_text": chunk['text']
-                    }
-                    for chunk in chunks
-                ]
-                records.extend(chunks)
+        # Run all queries concurrently
+        all_query_results = await asyncio.gather(
+            *[process_query(q) for q in queries_to_process],
+            return_exceptions=True
+        )
 
-        for i in range(0, len(records), BATCH_SIZE):
-            batch = records[i:i + BATCH_SIZE]
-            self.index.upsert_records(self.unique_id, batch)
+        # Flatten all records
+        for q_res in all_query_results:
+            if isinstance(q_res, list):
+                records.extend(q_res)
+            elif isinstance(q_res, Exception):
+                print(f"Error during query processing: {q_res}")
+
+        # Batch upsert to Pinecone
+        if records:
+            for i in range(0, len(records), BATCH_SIZE):
+                batch = records[i:i + BATCH_SIZE]
+                self.index.upsert_records(self.unique_id, batch)
+
+
+    async def _crawl_and_chunk(self, url: str) -> list:
+        """
+        Helper method to crawl a URL and create chunks
+        Returns a list of chunk records
+        """
+        try:
+            crawled_result = await web_crawler(url=url)
+
+            if isinstance(crawled_result, str):  # Error message returned
+                print(f"Failed to crawl {url}: {crawled_result}")
+                return []
+
+            # dividing the crawled_result into chunks
+            chunker = TextChunker(chunk_size=400, overlap=50)
+            chunks = chunker.chunk_text(
+                crawled_result.text if isinstance(crawled_result, ScrapeResult) else crawled_result
+            )
+
+            # Create chunk records
+            chunks = [
+                {
+                    "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
+                    "title": crawled_result.title,
+                    "description": crawled_result.description,
+                    "url": crawled_result.url,
+                    "chunk_id": chunk['chunk_id'],
+                    "chunk_text": chunk['text']
+                }
+                for chunk in chunks
+            ]
+            
+            return chunks
+        except Exception as e:
+            print(f"Error processing {url}: {e}")
+            return []
     
     def is_url_exists(self, url: str) -> bool:
         url_hash = hashlib.md5(url.encode()).hexdigest()
@@ -295,6 +395,7 @@ class ExplorerAgent:
         return len(result.vectors) > 0
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["AI diagnostic accuracy improvement percentage 2024", "What was the first computer?"], unique_id="user2", get_answer=True, get_multiple_answer=False, max_results=5)
-    result = asyncio.run(explorer_agent.run())
-    print(result)
+    explorer_agent = ExplorerAgent(queries=["Who is CEO of OPENAI?"], unique_id="user1", get_answer=True, get_multiple_answer=False, max_results=2)
+    results = asyncio.run(explorer_agent.run())
+    for result in results:
+        print(result.summary)

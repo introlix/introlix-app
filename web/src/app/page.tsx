@@ -1,25 +1,21 @@
+"use client";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { getWorkspaces } from "@/lib/api";
+import { Workspace } from "@/lib/types";
 import { ArrowRight, Dot, File, MessageCircle, Microscope, Plus, Search } from "lucide-react";
 import Link from "next/link";
-
-interface ProjectData {
-  id: string,
-  title: string,
-  url: string,
-  items: number,
-  updatedAt: string
-}
+import { useEffect, useState } from "react";
 
 export default function Home() {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [openNewChatWindow, setOpenNewChatWindow] = useState<Boolean>(false);
 
-  const projectData: ProjectData[] = [
-    // { id: 'a12', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    // { id: '212', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    // { id: '2b2', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-    // { id: '215', title: 'Best LLM for deep research', url: '/', items: 5, updatedAt: '2 hours ago' },
-  ]
+  useEffect(() => {
+    getWorkspaces().then(res => setWorkspaces(res.items));
+  }, []);
+
   return (
     <main className="w-[80%] h-[80%]">
       <div className="flex items-center justify-center">
@@ -28,16 +24,16 @@ export default function Home() {
             <h3 className="font-bold">Recent Workspaces</h3>
             <span className="text-accent-foreground text-sm">Your latest work</span>
           </div>
-          {projectData.length > 0 ? <div className="">
-            {projectData.map((item) => (
+          {workspaces.length > 0 ? <div className="">
+            {workspaces.map((item) => (
               <Link key={item.id} href={'/'}>
                 <Card className="bg-card hover:bg-accent">
                   <CardContent className="">
-                    <CardTitle>{item.title}</CardTitle>
+                    <CardTitle>{item.name}</CardTitle>
                     <div className="flex text-xs text-muted-foreground items-center">
-                      <span>{item.items} Items</span>
+                      <span>{item.description} Items</span>
                       <Dot />
-                      <span>{item.updatedAt}</span>
+                      <span>{item.created_at}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -54,7 +50,7 @@ export default function Home() {
         <ButtonGroup className="flex flex-wrap items-center gap-2">
           <Link href={'/deep-research'}><Button variant="outline" className="cursor-pointer"><Microscope /> Deep Research</Button></Link>
           <Link href={'/research-desk'}><Button variant="outline" className="cursor-pointer"><File />Research Desk</Button></Link>
-          <Link href={'/chat'}><Button variant="outline" className="cursor-pointer"><MessageCircle />Chat</Button></Link>
+          <div><Button onClick={() => setOpenNewChatWindow(true)} variant="outline" className="cursor-pointer"><MessageCircle />Chat</Button></div>
           <Link href={'/chat?tool=search'}><Button variant="outline" className="cursor-pointer"><Search />Search</Button></Link>
         </ButtonGroup>
       </div>
