@@ -4,5 +4,5 @@ interface ChatProps {
 
 export default async function WorkspaceDetailPage({ params }: ChatProps) {
     const { workspaceid } = await params
-    return <h1>Chat ID: {workspaceid}</h1>
+    return <h1>Workspace ID: {workspaceid}</h1>
 }

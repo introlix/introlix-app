@@ -18,12 +18,12 @@ async def create_chat(workspace_id: str, request: WorkspaceChat):
         raise HTTPException(status_code=404, detail="Workspace not found")
     request.workspace_id = workspace_id
     item_dict = request.model_dump()
-    result = await db.workspace_items.insert_one(item_dict)
+    result = await db.chats.insert_one(item_dict)
     return {"message": "Chat created", "_id": str(result.inserted_id)}
 
 @chat_router.post('/{chat_id}/')
 async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
-    chat = await db.workspace_items.find_one({"_id": validate_object_id(chat_id)})
+    chat = await db.chats.find_one({"_id": validate_object_id(chat_id)})
 
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -37,7 +37,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             {"role": "user", "content": request.prompt}
         ]
         response = await llm_state.get_open_router(
-            model_name="qwen/qwen3-4b:free", 
+            model_name="meta-llama/llama-3.2-3b-instruct:free", 
             messages=messages,
             stream=False
         )
@@ -45,10 +45,11 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
         
         try:
             new_title = output["choices"][0]["message"]["content"]
+            print(new_title)
         except:
             new_title = output
 
-        await db.workspace_items.update_one(
+        await db.chats.update_one(
             {"_id": chat["_id"]},
             {"$set": {"title": new_title}}
         )
@@ -69,7 +70,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
     )
 
     # Add user message to database
-    await db.workspace_items.update_one(
+    await db.chats.update_one(
         {"_id": chat["_id"]},
         {
             "$push": {"messages": user_message.model_dump()},
@@ -105,7 +106,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             model=model
         )
 
-        await db.workspace_items.update_one(
+        await db.chats.update_one(
             {"_id": chat["_id"]},
             {
                 "$push": {"messages": assistant_message.model_dump()},
@@ -115,10 +116,18 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             
     return StreamingResponse(stream(), media_type="text/plain")
 
+@chat_router.get('/{chat_id}/')
+async def get_chat(chat_id: str):
+    """Get all the messages from a chat"""
+    result = await db.chats.find_one({"_id": validate_object_id(chat_id)})
+
+    if not result:
+        return "No Chat Found"
+    return serialize_doc(result)
 @chat_router.delete('/{chat_id}/')
 async def delete_chat(chat_id: str):
     """Delete a chat and its history"""
-    result = await db.workspace_items.delete_one({"_id": validate_object_id(chat_id)})
+    result = await db.chats.delete_one({"_id": validate_object_id(chat_id)})
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Chat not found")

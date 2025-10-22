@@ -42,11 +42,3 @@ class WorkspaceChat(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
 # Deep Research
-class WorkspaceItem(BaseModel):
-    id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-    workspace_id: str
-    type: str
-    title: str
-    content: str
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)

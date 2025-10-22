@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import ReactQueryProvider from "./providers/ReactQueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,22 +31,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <SidebarProvider>
-            <div className="flex w-full h-screen">
-              <AppSidebar />
-              <SidebarTrigger />
-              <main className="flex-1 flex flex-col items-center justify-center">
-                {children}
-              </main>
-            </div>
-          </SidebarProvider>
-        </ThemeProvider>
+        <ReactQueryProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <SidebarProvider>
+              <div className="flex w-full h-screen">
+                <AppSidebar />
+                <SidebarTrigger />
+                <main className="flex-1 flex flex-col items-center justify-center">
+                  {children}
+                </main>
+              </div>
+            </SidebarProvider>
+          </ThemeProvider>
+        </ReactQueryProvider>
       </body>
     </html>
   );
