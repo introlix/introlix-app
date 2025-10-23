@@ -116,7 +116,7 @@ export default function ChatPage({ workspaceId, chatId, initialPrompt }: ChatPag
     }
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col w-full h-full">
             <div className="border-b px-4 py-3 bg-background/95 backdrop-blur">
                 <div className="max-w-3xl mx-auto flex items-center justify-between">
                     <div className="flex-1 min-w-0">

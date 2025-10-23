@@ -64,7 +64,7 @@ export default function WorkspaceChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col w-full h-screen">
       {/* Center Welcome Section */}
       <div className="flex-1 flex flex-col items-center justify-center text-center px-4 space-y-6">
         <div className="flex flex-col items-center space-y-4">
@@ -77,34 +77,6 @@ export default function WorkspaceChatPage() {
           <p className="text-base text-muted-foreground">
             What can I help you with today?
           </p>
-        </div>
-
-        {/* Example suggestions (optional like ChatGPT) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-w-3xl">
-          {[
-            "Summarize this article for me",
-            "Explain a complex topic simply",
-            "Draft an email reply",
-            "Generate code for my project",
-            "Help me brainstorm ideas",
-            "Translate text into another language",
-          ].map((suggestion) => (
-            <Button
-              key={suggestion}
-              variant="outline"
-              className="text-sm justify-start h-auto py-3"
-              onClick={() => handleSubmit({ 
-                prompt: suggestion, 
-                model: "auto", 
-                search: false, 
-                agent: "", 
-                files: [] 
-              })}
-              disabled={isCreating || createChat.isPending}
-            >
-              {suggestion}
-            </Button>
-          ))}
         </div>
       </div>
 

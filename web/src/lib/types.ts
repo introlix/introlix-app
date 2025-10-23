@@ -25,7 +25,7 @@ export interface Chat {
 }
 
 export interface Workspace {
-  id: string;
+  id: string | null;
   name: string;
   user_id: string;
   created_at: string;

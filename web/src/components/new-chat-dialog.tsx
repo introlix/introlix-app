@@ -38,7 +38,7 @@ export const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
           <ScrollArea className="max-h-[50vh] w-full space-y-2 mb-4">
             {workspaces.length > 0 ? (
-              <div className="space-y-2 pr-4">
+              <div className="space-y-2 pr-4 max-h-[50vh]">
                 {workspaces.map((workspace) => (
                   <div
                     key={workspace.id}

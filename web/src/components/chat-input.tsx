@@ -153,6 +153,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={disabled}
+                className="cursor-pointer"
               >
                 <Upload className="h-4 w-4" />
               </Button>
@@ -163,6 +164,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
               size="icon"
               onClick={() => setSearchEnabled((prev) => !prev)}
               disabled={disabled}
+              className="cursor-pointer"
             >
               <Search className="h-4 w-4" />
             </Button>
@@ -172,7 +174,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
                 <Button
                   variant="outline"
                   size="icon"
-                  className="relative"
+                  className="relative cursor-pointer"
                   disabled={disabled}
                 >
                   <Bot className="h-4 w-4" />
@@ -190,7 +192,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
                     onClick={() =>
                       setSelectedAgent(agent === selectedAgent ? null : agent)
                     }
-                    className="flex items-center justify-between"
+                    className="flex items-center justify-between cursor-pointer"
                   >
                     <span>{AGENT_DISPLAY[agent]}</span>
                     {selectedAgent === agent && (
@@ -219,7 +221,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground"
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground cursor-pointer"
                   disabled={disabled}
                 >
                   <span>{MODEL_DISPLAY[selectedModel]}</span>
@@ -233,7 +235,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
                   <DropdownMenuItem
                     key={model}
                     onClick={() => setSelectedModel(model)}
-                    className="flex items-center justify-between"
+                    className="flex items-center justify-between cursor-pointer"
                   >
                     <span>{MODEL_DISPLAY[model]}</span>
                     {selectedModel === model && (
@@ -248,6 +250,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
               onClick={handleSubmit}
               disabled={!message.trim() || disabled}
               size="icon"
+              className="cursor-pointer"
             >
               {disabled ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

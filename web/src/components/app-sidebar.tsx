@@ -55,7 +55,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <Link href={'/'}>
                         <SidebarMenuButton className="cursor-pointer" tooltip="">
-                            <Image src={'./vercel.svg'} alt="" width={20} height={20} style={{ width: 'auto', height: 'auto' }} />
+                            <Image src={'./vercel.svg'} alt="" width={20} height={20} />
                             <span className="text-lg font-bold">Introlix</span>
                         </SidebarMenuButton>
                     </Link>
