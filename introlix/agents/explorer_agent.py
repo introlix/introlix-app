@@ -2,42 +2,6 @@
 The Web Search Agent retrieves relevant information from the internet
 using SearXNG and web crawling. It operates on multiple topics in parallel
 and generates structured summaries for efficient downstream processing.
-
-Input Format:
-==============================================================================
-RESEARCH_PLAN: <structured plan from Planner Agent with topics and keywords>
-SEARCH_CONSTRAINTS: <optional limitations on sources, date ranges, languages>
-==============================================================================
-
-Output Format:
-==============================================================================
-SEARCH_RESULTS: [
-    {
-        "topic": "<research topic>",
-        "sources_found": <number>,
-        "summaries": [
-            {
-                "title": "<article title>",
-                "url": "<source URL>",
-                "summary": "<1-3 sentence summary>",
-                "relevance_score": <0.0-1.0>,
-                "publication_date": "<date>",
-                "source_type": "<academic | news | blog | government | commercial>",
-                "author": "<author if available>",
-                "credibility_indicators": ["<peer_reviewed | established_publication | primary_source>"]
-            }
-        ]
-    }
-]
-===========================================================================
-
-Notes:
-------
-- Implement relevance_score algorithm based on keyword matching and content quality
-- Track credibility_indicators to assist Verifier Agent
-- Include source_type to help categorize information types
-- Limit summaries to essential information to reduce processing overhead
-- Flag potential academic sources for priority verification
 """
 
 import asyncio
@@ -121,12 +85,13 @@ class ExplorerAgent:
         Initializes the ExplorerAgent with configuration parameters.
         Args:
             queries (str): The search query or topic to explore.
+            unique_id (str): Unique id (Workspace ID) to isolate data per workspace.
             get_answer (bool): Whether to generate a final answer summary.
             get_multiple_answer (bool): Whether to return multiple answers based on different source or return one answer by summarizing the sources.
         """
         self.INSTRUCTION = INSTRUCTION
         self.queries = queries
-        self.unique_id = unique_id # Unique id = User ID + Workspace ID to make sure work space share same data
+        self.unique_id = unique_id
         self.get_answer = get_answer
         self.get_multiple_answer = get_multiple_answer
         self.max_results = max_results
@@ -141,7 +106,7 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            model="google/gemini-2.5-flash",
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
@@ -200,12 +165,16 @@ class ExplorerAgent:
             # Process each query separately
             for query in queries_to_search:
                 results = []
+                # ADDED: Filter by unique_id
                 results_ = self.index.search(
-                    namespace=self.unique_id,
+                    namespace="Search",
                     query={
                         "top_k": 3,
                         "inputs": {
                             "text": query
+                        },
+                        "filter": {
+                            "unique_id": self.unique_id
                         }
                     }
                 )
@@ -350,7 +319,8 @@ class ExplorerAgent:
         if records:
             for i in range(0, len(records), BATCH_SIZE):
                 batch = records[i:i + BATCH_SIZE]
-                self.index.upsert_records(self.unique_id, batch)
+                # ADDED: Pass unique_id to upsert_records
+                self.index.upsert_records(namespace="Search", records=batch)
 
 
     async def _crawl_and_chunk(self, url: str) -> list:
@@ -371,10 +341,11 @@ class ExplorerAgent:
                 crawled_result.text if isinstance(crawled_result, ScrapeResult) else crawled_result
             )
 
-            # Create chunk records
+            # Create chunk records - ADDED: unique_id in metadata
             chunks = [
                 {
                     "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
+                    "unique_id": self.unique_id,
                     "title": crawled_result.title,
                     "description": crawled_result.description,
                     "url": crawled_result.url,
@@ -390,12 +361,29 @@ class ExplorerAgent:
             return []
     
     def is_url_exists(self, url: str) -> bool:
+        """Check if URL exists for this specific unique_id"""
         url_hash = hashlib.md5(url.encode()).hexdigest()
         result = self.index.fetch(ids=[f"{url_hash}_chunk_0"])
-        return len(result.vectors) > 0
+        
+        # ADDED: Also check if it belongs to current unique_id
+        if len(result.vectors) > 0:
+            vector = result.vectors.get(f"{url_hash}_chunk_0")
+            if vector and vector.get('metadata', {}).get('unique_id') == self.unique_id:
+                return True
+        return False
+    
+    def delete_workspace_data(self):
+        """Delete all data for this workspace (unique_id)"""
+        self.index.delete(filter={"unique_id": self.unique_id})
             
 if __name__ == "__main__":
-    explorer_agent = ExplorerAgent(queries=["Who is CEO of OPENAI?"], unique_id="user1", get_answer=True, get_multiple_answer=False, max_results=2)
+    explorer_agent = ExplorerAgent(
+        queries=["Who is CEO of OPENAI?"], 
+        unique_id="68fe0850fc39fbc33364c7e1", 
+        get_answer=True, 
+        get_multiple_answer=False, 
+        max_results=2
+    )
     results = asyncio.run(explorer_agent.run())
     for result in results:
         print(result.summary)

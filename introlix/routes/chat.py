@@ -37,7 +37,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             {"role": "user", "content": request.prompt}
         ]
         response = await llm_state.get_open_router(
-            model_name="meta-llama/llama-3.2-3b-instruct:free", 
+            model_name="qwen/qwen3-235b-a22b:free", 
             messages=messages,
             stream=False
         )
@@ -53,9 +53,15 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             {"_id": chat["_id"]},
             {"$set": {"title": new_title}}
         )
+
+        # Update the workspace's updated_at field
+        await db.workspaces.update_one(
+            {"_id": validate_object_id(workspace_id)},
+            {"$set": {"updated_at": datetime.now()}}
+        )
     
     if request.model == "auto":
-        model = "meta-llama/llama-3.3-70b-instruct:free"
+        model = "gpt-5"
     else:
         model = request.model
 

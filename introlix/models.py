@@ -23,6 +23,11 @@ class Workspace(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
 # Workspace Workspace Items
+class WorkspaceItem(BaseModel):
+    id: Optional[str] = None
+    workspace_id: str
+    item_type: Literal["research_desk", "chat", "deep_research"]
+    
 # Chat
 class Message(BaseModel):
     """Individual message in a chat"""

@@ -9,37 +9,87 @@ import { getWorkspaces } from "@/lib/api";
 import { Workspace } from "@/lib/types";
 import { ArrowRight, Dot, File, MessageCircle, Microscope, Plus, Search, Trash } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+
+const MAX_RENDERED_ITEMS = 50; // Keep max 50 workspaces in memory
 
 export default function Home() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [openNewChatWindow, setOpenNewChatWindow] = useState<boolean>(false);
   const [openNewWorkspaceWindow, setOpenNewWorkspaceWindow] = useState<boolean>(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
   const deleteWorkspace = useDeleteWorkspace();
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
-    getWorkspaces().then((res) => setWorkspaces(res.items));
+    loadWorkspaces(1, true);
   }, []);
+
+  // Background loading - continues to fetch all workspaces
+  useEffect(() => {
+    if (!isInitialLoad.current && hasMore && !loading) {
+      const timer = setTimeout(() => {
+        loadWorkspaces(page + 1);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [workspaces, hasMore, loading, page]);
+
+  const loadWorkspaces = async (pageNum: number, reset: boolean = false) => {
+    if (loading) return;
+    
+    setLoading(true);
+    try {
+      const res = await getWorkspaces(pageNum, 10);
+      
+      if (reset) {
+        setWorkspaces(res.items);
+        isInitialLoad.current = false;
+      } else {
+        setWorkspaces(prev => {
+          const newItems = [...prev, ...res.items];
+          // Keep only the last MAX_RENDERED_ITEMS to prevent memory bloat
+          if (newItems.length > MAX_RENDERED_ITEMS) {
+            return newItems.slice(-MAX_RENDERED_ITEMS);
+          }
+          return newItems;
+        });
+      }
+      
+      // Check if there are more items to load
+      const stillHasMore = res.items.length === 10 && res.total > pageNum * 10;
+      setHasMore(stillHasMore);
+      setPage(pageNum);
+    } catch (error) {
+      console.error("Failed to load workspaces:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDeleteWorkspace = async (workspaceId: string) => {
     try {
       await deleteWorkspace.mutateAsync(workspaceId);
-      // Refresh the workspace list after deletion
-      const updatedWorkspaces = await getWorkspaces();
-      setWorkspaces(updatedWorkspaces.items);
+      // Reload from the beginning after deletion
+      await loadWorkspaces(1, true);
+      setPage(1);
+      setHasMore(true);
     } catch (error) {
       console.error("Failed to delete workspace:", error);
     }
   };
 
   const handleWorkspaceCreated = async () => {
-    // Refresh the workspace list after creation
-    const updatedWorkspaces = await getWorkspaces();
-    setWorkspaces(updatedWorkspaces.items);
+    // Reload from the beginning after creation
+    await loadWorkspaces(1, true);
+    setPage(1);
+    setHasMore(true);
   };
 
-  // Show only top 5 workspaces
-  const displayedWorkspaces = workspaces.toReversed().slice(0, 4);
+  // Show only top 4 workspaces on the home page
+  const displayedWorkspaces = workspaces.slice(0, 4);
 
   return (
     <main className="w-[80%] h-[80%] mx-auto mt-6">
@@ -97,6 +147,10 @@ export default function Home() {
                   View All Workspaces <ArrowRight className="ml-1" />
                 </Button>
               </Link>
+            </div>
+          ) : loading ? (
+            <div className="flex justify-center items-center h-52">
+              <span className="text-muted-foreground">Loading workspaces...</span>
             </div>
           ) : (
             <div className="flex justify-center items-center h-52">

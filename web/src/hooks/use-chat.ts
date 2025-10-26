@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { chatApi, getWorkspaces, getWorkspace, createWorkspace, deleteWorkspace } from "@/lib/api";
+import { chatApi, getWorkspaces, getWorkspace, createWorkspace, deleteWorkspace, getAllWorkspacesItems, getWorkspaceItems } from "@/lib/api";
 import { Workspace } from "@/lib/types";
 
+// Get chat by ID
 export function useChat(chatId: string | null) {
   return useQuery({
     queryKey: ["chat", chatId],
@@ -10,6 +11,7 @@ export function useChat(chatId: string | null) {
   });
 }
 
+// Get workspace by ID
 export function useWorkspace(workspaceId: string | null) {
   return useQuery({
     queryKey: ["workspace", workspaceId],
@@ -18,6 +20,7 @@ export function useWorkspace(workspaceId: string | null) {
   });
 }
 
+// Get list of workspaces
 export function useWorkspaces(page = 1, limit = 10) {
   return useQuery({
     queryKey: ["workspaces", page, limit],
@@ -25,6 +28,7 @@ export function useWorkspaces(page = 1, limit = 10) {
   });
 }
 
+// Create a new workspace
 export function useCreateWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -32,6 +36,23 @@ export function useCreateWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspace"]});
     }
+  });
+}
+
+// Get all workspaces items (chats, deep research, research desk, etc.)
+export function useAllWorkspacesItems(page = 1, limit = 10) {
+  return useQuery({
+    queryKey: ["workspace-items", page, limit],
+    queryFn: () => getAllWorkspacesItems(page, limit),
+  })
+}
+
+// Get items related to a specific workspace
+export function useWorkspaceItems(workspaceId: string, page = 1, limit = 10) {
+  return useQuery({
+    queryKey: ["workspace-items", workspaceId],
+    queryFn: () => getWorkspaceItems(workspaceId, page, limit),
+    enabled: !!workspaceId,
   });
 }
 

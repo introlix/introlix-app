@@ -121,7 +121,7 @@ export default function ChatPage({ workspaceId, chatId, initialPrompt }: ChatPag
                 <div className="max-w-3xl mx-auto flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                         <h1 className="text-lg font-semibold truncate">
-                            {typeof chat.title === 'string' ? chat.title : JSON.stringify(chat.title) || "New Chat"}
+                            {typeof chat.title === 'string' ? chat.title : "New Chat"}
                         </h1>
 +                        {workspace && (
                             <p className="text-sm text-muted-foreground">
@@ -129,18 +129,6 @@ export default function ChatPage({ workspaceId, chatId, initialPrompt }: ChatPag
                             </p>
                         )}
                     </div>
-
-                    {isStreaming && (
-                        <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={stopStreaming}
-                            className="ml-4"
-                        >
-                            <StopCircle className="h-4 w-4 mr-2" />
-                            Stop
-                        </Button>
-                    )}
                 </div>
             </div>
 

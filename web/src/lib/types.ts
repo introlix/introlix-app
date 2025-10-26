@@ -32,6 +32,15 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface WorkspaceItem {
+  id: string;
+  workspace_id: string;
+  title: string;
+  type: 'chat' | 'deep_research' | 'research_desk' | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CreateChatRequest {
   workspace_id?: string;
   title?: string;

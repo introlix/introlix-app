@@ -79,7 +79,7 @@ config = AgentInput(
 )
 
 filter_agent = Agent(
-    model="meta-llama/llama-4-maverick:free",
+    model="google/gemini-2.5-flash",
     instruction=FILTER_AGENT_INSTRUCTIONS,
     config=config,
     output_model_class=SearchResults,

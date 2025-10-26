@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type ModelType = "auto" | "gpt-5" | "claude" | "deepseek" | "gemini";
+type ModelType = "auto" | "gpt-5" | "claude-sonnet-4" | "deepseek/deepseek-v3.2-exp" | "google/gemini-2.5-pro";
 type AgentType = "verifier" | "knowledge-gap" | "research-assistant" | "code-reviewer" | null;
 
 interface ChatInputProps {
@@ -29,9 +29,9 @@ interface ChatInputProps {
 const MODEL_DISPLAY: Record<ModelType, string> = {
   "auto": "Auto",
   "gpt-5": "GPT-5",
-  "claude": "Claude",
-  "deepseek": "Deepseek",
-  "gemini": "Gemini",
+  "claude-sonnet-4": "Claude Sonnet 4",
+  "deepseek/deepseek-v3.2-exp": "Deepseek",
+  "google/gemini-2.5-pro": "Gemini 2.5 Pro",
 };
 
 const AGENT_DISPLAY: Record<Exclude<AgentType, null>, string> = {
@@ -51,7 +51,7 @@ export default function ChatInput({ onSubmit, disabled = false }: ChatInputProps
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const models: ModelType[] = ["auto", "gpt-5", "claude", "deepseek", "gemini"];
+  const models: ModelType[] = ["auto", "gpt-5", "claude-sonnet-4", "deepseek/deepseek-v3.2-exp", "google/gemini-2.5-pro"];
   const agents: Exclude<AgentType, null>[] = [
     "verifier",
     "knowledge-gap",

@@ -1,4 +1,4 @@
-import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest } from "./types";
+import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem } from "./types";
 
 const BASE_URL = "http://localhost:8000";
 
@@ -17,6 +17,12 @@ export async function createWorkspace(data: Workspace): Promise<{ workspace: Wor
   return res.json();
 }
 
+export async function getAllWorkspacesItems(page=1, limit=10): Promise<PaginatedResponse<WorkspaceItem>> {
+  const res = await fetch(`${BASE_URL}/workspaces/items?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch all workspaces items");
+  return res.json();
+}
+
 export async function getWorkspace(id: string): Promise<Workspace> {
   const res = await fetch(`${BASE_URL}/workspaces/${id}`);
   return res.json();
@@ -24,9 +30,15 @@ export async function getWorkspace(id: string): Promise<Workspace> {
 
 export async function deleteWorkspace(id: string): Promise<{ message: string }> {
   const res = await fetch(`${BASE_URL}/workspaces/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete workspace");
   return res.json();
 }
 
+export async function getWorkspaceItems(workspaceId: string, page = 1, limit = 10): Promise<PaginatedResponse<WorkspaceItem>> {
+  const res = await fetch(`${BASE_URL}/workspaces/${workspaceId}/items?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch workspace items");
+  return res.json();
+}
 // -------------------- CHAT API --------------------
 export const chatApi = {
   async create(
