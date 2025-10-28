@@ -40,7 +40,7 @@ Your response should be in the following JSON format:
 Make sure to only respond with the JSON format specified above and nothing else.
 """
 
-class ResearcherAgent:
+class WriterAgent:
     def __init__(self):
         self.INSTRUCTIONS = INSTRUCTIONS
         
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def main():
-        writer_agent = ResearcherAgent()
+        writer_agent = WriterAgent()
         enriched_prompt = "The impact of climate change on coastal cities. Make it in research paper"
         research_outputs = [
             '{"result": "Climate change is causing sea levels to rise, which threatens coastal cities with flooding and erosion.", "references": ["Source A", "Source B"]}',
