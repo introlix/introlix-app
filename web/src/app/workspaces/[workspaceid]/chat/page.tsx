@@ -16,7 +16,7 @@ export default function WorkspaceChatPage() {
   const createChat = useCreateChat(workspaceId);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Handle first message submission (like ChatGPT)
+  // Handle first message submission
   const handleSubmit = async (data: {
     prompt: string;
     model: string;

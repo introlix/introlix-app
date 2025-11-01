@@ -84,7 +84,7 @@ export function AppSidebar() {
                             )}
                             {recentOpens?.items.map((item) => (
                                 <SidebarMenuItem key={item.id}>
-                                    <Link href={`/workspaces/${item.workspace_id}/${item.type}s/${item.id}`}>
+                                    <Link href={`/workspaces/${item.workspace_id}/${item.type}/${item.id}`}>
                                         <SidebarMenuButton asChild tooltip={item.title || "Untitled"} className="cursor-pointer">
                                             <span className="group-data-[collapsible=icon]:hidden">{item.title || "Untitled"}</span>
                                         </SidebarMenuButton>

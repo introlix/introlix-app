@@ -1,4 +1,4 @@
-import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem } from "./types";
+import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem, ResearchDesk, CreateResearchDeskRequest } from "./types";
 
 const BASE_URL = "http://localhost:8000";
 
@@ -102,3 +102,36 @@ export const chatApi = {
     }
   },
 };
+
+// -------------------- RESEARCH DESK API --------------------
+export const researchDeskApi = {
+  async create(workspaceId: string, data: CreateResearchDeskRequest): Promise<{ message: string; _id: string }> {
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/new`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data }),
+    });
+    if (!res.ok) throw new Error("Failed to create research desk");
+    return res.json();
+  },
+
+  async add_document(
+    workspaceId: string,
+    deskId: string,
+    document: object
+  ): Promise<{ message: string }> {
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/docs`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document }),
+    });
+    if (!res.ok) throw new Error("Failed to add document to research desk");
+    return res.json();
+  },
+
+  async getById(workspaceId: string, deskId: string): Promise<ResearchDesk> {
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/docs`);
+    if (!res.ok) throw new Error('Research Desk not found');
+    return res.json();
+  }
+}

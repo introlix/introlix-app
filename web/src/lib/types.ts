@@ -53,3 +53,19 @@ export interface SendMessageRequest {
   search: boolean;
   agent: string;
 }
+
+// Research Desk
+export interface CreateResearchDeskRequest {
+  workspace_id?: string;
+  title?: string;
+  documents?: object;
+}
+
+export interface ResearchDesk {
+  id: string | null;
+  workspace_id: string;
+  title: string;
+  documents: object;
+  created_at: string;
+  updated_at: string;
+}

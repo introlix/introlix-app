@@ -5,6 +5,7 @@ from introlix.database import db, serialize_doc, validate_object_id
 from introlix.models import Workspace
 from introlix.schemas import PaginatedResponse
 from introlix.routes.chat import chat_router
+from introlix.routes.research_desk import research_desk_router
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import DESCENDING
 
@@ -51,7 +52,6 @@ async def get_all_workspace_items(page: int = Query(1, ge=1), limit: int = Query
 
     # TODO: After getting chats, get other items like deep research add research desk and mix it with chat_list
     items = chat_list  # currently only chats
-    print(items)
     return {"items": items, "total": chat_total, "page": page, "limit": limit}
 
 @app.get("/workspaces/{id}", tags=["workspace"])
@@ -105,3 +105,4 @@ def read_root():
 # basic routes
 
 app.include_router(chat_router)
+app.include_router(research_desk_router)

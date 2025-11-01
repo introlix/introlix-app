@@ -102,7 +102,7 @@ export default function WorkspaceDetailPage() {
                             <Microscope /> Deep Research
                         </Button>
                     </Link>
-                    <Link href={'/research-desk'}>
+                    <Link href={`/workspaces/${workspaceId}/desk`}>
                         <Button variant="outline" className="cursor-pointer">
                             <File />Research Desk
                         </Button>

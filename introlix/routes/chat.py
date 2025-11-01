@@ -45,7 +45,6 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
         
         try:
             new_title = output["choices"][0]["message"]["content"]
-            print(new_title)
         except:
             new_title = output
 

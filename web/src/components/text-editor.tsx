@@ -1,16 +1,15 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
+import debounce from 'lodash.debounce';
 import type { ReactNode } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import type { InitialConfigType } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
-import type { ErrorBoundaryProps } from '@lexical/react';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-// FIX: useLexicalComposerContext is needed in ExportDialog
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
     HeadingNode,
@@ -26,7 +25,7 @@ import { AutoLinkNode, LinkNode } from '@lexical/link';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { MarkdownShortcutPlugin } from '@lexical/react/LexicalMarkdownShortcutPlugin';
-import { TRANSFORMERS, $convertToMarkdownString } from '@lexical/markdown';
+import { TRANSFORMERS, $convertToMarkdownString, $convertFromMarkdownString } from '@lexical/markdown';
 import {
     $getSelection,
     $isRangeSelection,
@@ -36,6 +35,7 @@ import {
     FORMAT_ELEMENT_COMMAND,
     $createParagraphNode,
     $getRoot,
+    $createTextNode,
     LexicalEditor
 } from 'lexical';
 import type {
@@ -67,83 +67,41 @@ import {
     Undo2,
     Redo2,
     Download,
-    Save,
     FileText,
     X,
 } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from './ui/select';
+import { useDesk, useAddDocumentToDesk } from '@/hooks/use-desk';
 
-// =========================================================================
-// --- UTILITY FUNCTION TO HANDLE EXPORT LOGIC ---
-// =========================================================================
-const exportDocument = (editor: LexicalEditor, format: string) => {
-    const fileName = `document.${format.toLowerCase()}`;
-    let content = '';
-    let mimeType = '';
-    let success = true;
-
-    editor.read(() => {
-        switch (format.toLowerCase()) {
-            case 'md':
-            case 'markdown':
-                content = $convertToMarkdownString(TRANSFORMERS);
-                mimeType = 'text/markdown';
-                break;
-
-            case 'txt':
-                content = $getRoot().getTextContent();
-                mimeType = 'text/plain';
-                break;
-
-            case 'pdf':
-            case 'docx':
-                console.warn(`${format.toUpperCase()} export initiated. Requires server-side processing for styling.`);
-                // For client-side export, fallback to plain text content
-                content = $getRoot().getTextContent();
-                mimeType = 'text/plain';
-                break;
-
-            default:
-                console.error('Invalid format selected for export.');
-                success = false;
-                return;
-        }
-
-        if (success) {
-            const blob = new Blob([content], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-    });
-    return success;
-};
-
-// =========================================================================
-// --- EXPORT DIALOG COMPONENT (Modal Placeholder) ---
-// =========================================================================
+// --- EXPORT DIALOG ---
 interface ExportDialogProps {
     onClose: () => void;
 }
 
 function ExportDialog({ onClose }: ExportDialogProps) {
-    // FIX APPLIED HERE: Correctly get editor instance from context
     const [editor] = useLexicalComposerContext();
 
     const formats = [
-        { key: 'md', label: 'Markdown (.md)', style: 'Preserves headings, lists, and basic formatting.', mime: 'text/markdown' },
-        { key: 'txt', label: 'Plain Text (.txt)', style: 'Content only, no style preserved.', mime: 'text/plain' },
-        { key: 'pdf', label: 'PDF (.pdf)', style: 'Requires server-side rendering for full style preservation.', mime: 'application/pdf' },
-        { key: 'docx', label: 'Word (.docx)', style: 'Requires server-side service for export.', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+        { key: 'md', label: 'Markdown (.md)', style: 'Preserves headings, lists, and basic formatting.' },
+        { key: 'txt', label: 'Plain Text (.txt)', style: 'Content only, no style preserved.' },
     ];
 
     const handleSelectFormat = (formatKey: string) => {
-        exportDocument(editor, formatKey);
+        editor.read(() => {
+            const content = formatKey === 'md' 
+                ? $convertToMarkdownString(TRANSFORMERS)
+                : $getRoot().getTextContent();
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `document.${formatKey}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
         onClose();
     };
 
@@ -168,41 +126,21 @@ function ExportDialog({ onClose }: ExportDialogProps) {
                         </button>
                     ))}
                 </div>
-                <p className="text-xs text-center text-destructive-foreground mt-4 p-2 bg-destructive/10 rounded">
-                    **Style Warning:** Only Markdown (.md) preserves some structure on the client side. PDF and DOCX require a server endpoint for accurate formatting.
-                </p>
             </div>
         </div>
     );
 }
 
-
-// =========================================================================
 // --- TOOLBAR PLUGIN ---
-// =========================================================================
 interface ToolbarButtonProps {
     onClick: React.MouseEventHandler<HTMLButtonElement>;
     active?: boolean;
     title: string;
     children: ReactNode;
-    variant?: 'default' | 'primary' | 'outline';
 }
 
 function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
     const [heading, setHeading] = useState("normal");
-
-    const handleChange = (value: string) => {
-        setHeading(value);
-        if (value === "normal") {
-            formatParagraph();
-        } else {
-            // Narrow the incoming string to allowed heading tags before calling formatHeading
-            const allowed: Array<string> = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
-            if (allowed.includes(value)) {
-                formatHeading(value as HeadingTagType);
-            }
-        }
-    };
     const [editor] = useLexicalComposerContext();
     const [activeStates, setActiveStates] = useState({
         bold: false,
@@ -227,71 +165,48 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
         });
     }, [editor]);
 
+    const handleChange = (value: string) => {
+        setHeading(value);
+        editor.update(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+                if (value === "normal") {
+                    selection.insertNodes([$createParagraphNode()]);
+                } else {
+                    const allowed: Array<string> = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+                    if (allowed.includes(value)) {
+                        selection.insertNodes([$createHeadingNode(value as HeadingTagType)]);
+                    }
+                }
+            }
+        });
+    };
+
     const formatText = (format: TextFormatType) => {
         editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
-    };
-
-    const formatParagraph = () => {
-        editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                const paragraph = $createParagraphNode();
-                selection.insertNodes([paragraph]);
-            }
-        });
-    };
-
-    const formatHeading = (headingSize: HeadingTagType) => {
-        editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                const heading = $createHeadingNode(headingSize);
-                selection.insertNodes([heading]);
-            }
-        });
-    };
-
-    const formatQuote = () => {
-        editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                const quote = $createQuoteNode();
-                selection.insertNodes([quote]);
-            }
-        });
     };
 
     const formatAlign = (alignment: ElementFormatType) => {
         editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, alignment);
     };
 
-    const ToolbarButton = ({
-        onClick,
-        active,
-        title,
-        children,
-        variant = 'default',
-    }: ToolbarButtonProps) => (
+    const formatQuote = () => {
+        editor.update(() => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection)) {
+                selection.insertNodes([$createQuoteNode()]);
+            }
+        });
+    };
+
+    const ToolbarButton = ({ onClick, active, title, children }: ToolbarButtonProps) => (
         <button
             onClick={onClick}
             type="button"
             title={title}
-            className={`
-        inline-flex items-center justify-center h-8 px-2.5 rounded
-        text-sm font-medium transition-colors
-        ${active
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-accent/50 text-muted-foreground hover:text-foreground'
-                }
-        ${variant === 'primary'
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : ''
-                }
-        ${variant === 'outline'
-                    ? 'border border-input hover:bg-accent hover:text-accent-foreground'
-                    : ''
-                }
-      `}
+            className={`inline-flex items-center justify-center h-8 px-2.5 rounded text-sm font-medium transition-colors ${
+                active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50 text-muted-foreground hover:text-foreground'
+            }`}
         >
             {children}
         </button>
@@ -300,9 +215,8 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
     const ToolbarDivider = () => <div className="w-px h-5 bg-border mx-1" />;
 
     return (
-        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+        <div className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
             <div className="flex items-center gap-1 px-4 py-2">
-
                 <div className="flex items-center gap-1">
                     <ToolbarButton onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)} title="Undo">
                         <Undo2 className="h-4 w-4 cursor-pointer" />
@@ -349,13 +263,13 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
                 <ToolbarDivider />
 
                 <div className="flex items-center gap-1">
-                    <ToolbarButton onClick={() => formatText('bold')} active={activeStates.bold} title="Bold (Ctrl+B)">
+                    <ToolbarButton onClick={() => formatText('bold')} active={activeStates.bold} title="Bold">
                         <Bold className="h-4 w-4 cursor-pointer" />
                     </ToolbarButton>
-                    <ToolbarButton onClick={() => formatText('italic')} active={activeStates.italic} title="Italic (Ctrl+I)">
+                    <ToolbarButton onClick={() => formatText('italic')} active={activeStates.italic} title="Italic">
                         <Italic className="h-4 w-4 cursor-pointer" />
                     </ToolbarButton>
-                    <ToolbarButton onClick={() => formatText('underline')} active={activeStates.underline} title="Underline (Ctrl+U)">
+                    <ToolbarButton onClick={() => formatText('underline')} active={activeStates.underline} title="Underline">
                         <Underline className="h-4 w-4 cursor-pointer" />
                     </ToolbarButton>
                     <ToolbarButton onClick={() => formatText('strikethrough')} active={activeStates.strikethrough} title="Strikethrough">
@@ -394,31 +308,56 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
                 <div className="flex-1" />
 
                 <div className="flex items-center gap-2">
-                    <ToolbarButton
+                    <button
                         onClick={openExportDialog}
                         title="Export Document"
-                        variant="outline"
+                        className="inline-flex items-center justify-center h-8 px-3 rounded border border-input hover:bg-accent hover:text-accent-foreground text-sm"
                     >
                         <Download className="h-4 w-4 mr-1.5" />
-                        <span className="text-sm">Export</span>
-                    </ToolbarButton>
-                    <ToolbarButton
-                        onClick={() => console.log('Save to Google Docs (requires API setup)')}
-                        title="Save to Google Docs"
-                        variant="outline"
-                    >
-                        <Save className="h-4 w-4 mr-1.5" />
-                        <span className="text-sm">Save</span>
-                    </ToolbarButton>
+                        <span>Export</span>
+                    </button>
                 </div>
             </div>
         </div>
     );
 }
 
-// =========================================================================
-// --- TEXT EDITOR COMPONENT ---
-// =========================================================================
+// --- LOAD CONTENT PLUGIN ---
+function LoadContentPlugin({ content, deskId }: { content?: string; deskId: string }) {
+    const [editor] = useLexicalComposerContext();
+    const loadedDeskRef = useRef<string | null>(null);
+    const hasLoadedRef = useRef(false);
+
+    useEffect(() => {
+        // Reset when desk changes
+        if (loadedDeskRef.current !== deskId) {
+            hasLoadedRef.current = false;
+            loadedDeskRef.current = deskId;
+        }
+    }, [deskId]);
+
+    useEffect(() => {
+        // Only load once per desk and only if we have content
+        if (!content || hasLoadedRef.current) return;
+
+        editor.update(() => {
+            const root = $getRoot();
+            root.clear();
+            
+            try {
+                $convertFromMarkdownString(content, TRANSFORMERS);
+            } catch (err) {
+                console.error('Failed to load markdown:', err);
+            }
+        });
+
+        hasLoadedRef.current = true;
+    }, [editor, content]);
+
+    return null;
+}
+
+// --- THEME ---
 const theme = {
     paragraph: 'mb-3 leading-relaxed',
     heading: {
@@ -437,8 +376,7 @@ const theme = {
         underline: 'underline underline-offset-2',
         strikethrough: 'line-through',
     },
-    quote:
-        'border-l-4 border-primary/40 pl-4 py-2 my-4 italic text-muted-foreground bg-muted/30',
+    quote: 'border-l-4 border-primary/40 pl-4 py-2 my-4 italic text-muted-foreground bg-muted/30',
     code: 'bg-muted px-1.5 py-0.5 rounded-sm font-mono text-sm',
 };
 
@@ -446,8 +384,11 @@ function onError(error: Error) {
     console.error(error);
 }
 
-export default function TextEditor() {
+export default function TextEditor({ workspaceId, deskId }: { workspaceId: string; deskId: string }) {
+    const addDocument = useAddDocumentToDesk();
     const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+    const isInitialLoadRef = useRef(true);
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const initialConfig: InitialConfigType = {
         namespace: 'ResearchDeskEditor',
@@ -468,11 +409,53 @@ export default function TextEditor() {
         ],
     };
 
+    // Reset initial load flag when desk changes
+    useEffect(() => {
+        isInitialLoadRef.current = true;
+        const timer = setTimeout(() => {
+            isInitialLoadRef.current = false;
+        }, 2000); // Wait 2 seconds before enabling autosave
+        return () => clearTimeout(timer);
+    }, [deskId]);
+
     const onChange = useCallback((editorState: EditorState) => {
-        editorState.read(() => {
-            // Save editor state
-        });
+        // Skip saving during initial load period
+        if (isInitialLoadRef.current) return;
+
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        // Debounce the save
+        saveTimeoutRef.current = setTimeout(() => {
+            editorState.read(() => {
+                const markdown = $convertToMarkdownString(TRANSFORMERS);
+                addDocument.mutate({
+                    workspaceId,
+                    deskId,
+                    document: { content: markdown, contentType: 'markdown' },
+                });
+            });
+        }, 1500);
+    }, [workspaceId, deskId, addDocument]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
     }, []);
+
+    // Load desk data
+    const deskQuery = useDesk(workspaceId, deskId);
+    const deskContent = React.useMemo(() => {
+        const data = deskQuery.data as any;
+        const content = data?.documents?.document?.content;
+        return typeof content === 'string' ? content : undefined;
+    }, [deskQuery.data]);
 
     return (
         <div className="h-screen flex flex-col bg-background">
@@ -482,6 +465,7 @@ export default function TextEditor() {
                 <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-800 p-8">
                     <div className="bg-card border rounded-lg shadow-lg w-[8.5in] min-h-[11in] mx-auto mb-8">
                         <div className="relative p-[1in]">
+                            {deskContent && <LoadContentPlugin content={deskContent} deskId={deskId} />}
                             <RichTextPlugin
                                 contentEditable={
                                     <ContentEditable
@@ -494,9 +478,9 @@ export default function TextEditor() {
                                         Start writing...
                                     </div>
                                 }
-                                ErrorBoundary={({ error }: ErrorBoundaryProps) => (
+                                ErrorBoundary={() => (
                                     <div className="text-destructive p-4 bg-destructive/10 rounded-md border border-destructive/20">
-                                        {error?.message}
+                                        Some error occurred in the editor.
                                     </div>
                                 )}
                             />
@@ -512,9 +496,7 @@ export default function TextEditor() {
                 <OnChangePlugin onChange={onChange} />
 
                 {isExportDialogOpen && (
-                    <ExportDialog
-                        onClose={() => setIsExportDialogOpen(false)}
-                    />
+                    <ExportDialog onClose={() => setIsExportDialogOpen(false)} />
                 )}
             </LexicalComposer>
         </div>
