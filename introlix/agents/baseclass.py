@@ -80,26 +80,25 @@ class PromptTemplate(BaseModel):
 
 
 class BaseAgent(ABC):
-    def __init__(self, model, config: Optional[AgentInput] = None, max_iterations: int = 10):
+    def __init__(
+        self, model, config: Optional[AgentInput] = None, max_iterations: int = 10
+    ):
         self.config = config
         self.model = model
         self.instruction = ""
         self.max_iterations = max_iterations
 
     async def _call_llm(
-        self, 
-        prompt: str, 
-        cloud: bool = True, 
-        stream: bool = False
+        self, prompt: str, cloud: bool = True, stream: bool = False
     ) -> Union[str, AsyncGenerator[str, None]]:
         """
         Call LLM and return output
-        
+
         Args:
             prompt: The prompt to send
             cloud: Whether to use cloud API (default: True)
             stream: Whether to stream the response (default: False)
-            
+
         Returns:
             String if stream=False, AsyncGenerator if stream=True
         """
@@ -109,12 +108,10 @@ class BaseAgent(ABC):
             llm_state = LLMState()
             messages = [
                 {"role": "system", "content": self.instruction},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ]
             response = await llm_state.get_open_router(
-                model_name=self.model, 
-                messages=messages,
-                stream=stream
+                model_name=self.model, messages=messages, stream=stream
             )
 
             if stream:
@@ -136,6 +133,24 @@ class BaseAgent(ABC):
                 ],
             )
             return output.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    async def _call_llm_with_messages(self, messages: List[Dict], stream: bool = False):
+        """Call LLM with messages array (ChatGPT style)"""
+        from introlix.services.LLMState import LLMState
+
+        llm_state = LLMState()
+        response = await llm_state.get_open_router(
+            model_name=self.model, messages=messages, stream=stream
+        )
+
+        if stream:
+            return response
+        else:
+            output = response.json()
+            try:
+                return output["choices"][0]["message"]["content"]
+            except:
+                return output
 
     async def _parse_output(self, raw_output: str) -> Any:
         """Parse LLM output using output_parser or output_type"""
@@ -215,7 +230,11 @@ class BaseAgent(ABC):
 
             if action["type"] == "final":
                 return AgentOutput(
-                    result=parsed_output["answer"] if "answer" in parsed_output else parsed_output,
+                    result=(
+                        parsed_output["answer"]
+                        if "answer" in parsed_output
+                        else parsed_output
+                    ),
                     performance={"steps": step + 1},
                 )
 

@@ -42,7 +42,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from introlix.agents.baseclass import AgentInput, AgentOutput, BaseAgent, PromptTemplate
-from introlix.services.LLMState import LLMState
 
 
 class ResearchParameters(BaseModel):
@@ -93,9 +92,13 @@ class ContextOutput(BaseModel):
 
 
 class ContextAgent(BaseAgent):
-    def __init__(self, config: AgentInput, model, max_iterations: int = 3):
+    def __init__(
+        self, config: AgentInput, model, conversation_history, max_iterations: int = 3
+    ):
         super().__init__(config=config, model=model, max_iterations=max_iterations)
         self.logger = logging.getLogger(__name__)
+
+        self.conversation_history = conversation_history
 
         self.row_instruction = f"""
         You are a Context Agent in the Introlix Research Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
@@ -170,14 +173,45 @@ class ContextAgent(BaseAgent):
         - Ensure the research can be transformed into a full research paper if needed
         - Consider both deep research and quick shallow search capabilities of the platform
 
+        Note: Never make move_next ture if CONFIDENCE_LEVEL < 0.7
+
         ## Quality Standards
         Your output determines the success of the entire research pipeline. Be thorough, precise, and comprehensive in your analysis.
+
+
+        ## EXAMPLE OUTPUT 1: Need More Info
+
+        ```json
+        {{
+        "type": "final",
+        "answer": {{
+            "questions": [
+            "What time period should this research cover?",
+            "Are you looking for academic research or industry applications?"
+            ],
+            "move_next": false,
+            "confidence_level": 0.5,
+            "final_prompt": "User wants research on AI in healthcare but scope needs clarification",
+            "research_parameters": {{
+            "estimated_duration": "medium",
+            "complexity_level": "intermediate",
+            "required_sources": "mixed",
+            "research_depth": "detailed"
+            }}
+        }}
+        }}
+        ```
         """
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """Build context-specific prompt for analysis with proper input validation."""
 
-        # Parse and validate input using the ContextInput model
+        pass
+
+    def _build_messages_array(
+        self, user_prompt: str, state: Dict[str, Any]
+    ) -> List[Dict]:
+        # Parse and validate input using the ContextInput modelCONFIDENCE_LEVEL
         try:
             if isinstance(user_prompt, str):
                 # Try to parse as JSON first
@@ -195,40 +229,36 @@ class ContextAgent(BaseAgent):
             self.logger.warning(f"Input validation failed: {e}")
             context_input = ContextInput(query=str(user_prompt))
 
-        # Build conversation history for context
-        conversation_history = ""
-        if state["history"]:
-            conversation_history = "\n## Previous Conversation:\n"
-            for i, h in enumerate(state["history"]):
-                # Parse previous outputs to show what agent asked before
-                try:
-                    prev_output = json.loads(h["raw"])
-                    if "answer" in prev_output and "questions" in prev_output["answer"]:
-                        questions = prev_output["answer"]["questions"]
-                        conversation_history += (
-                            f"Step {i+1} - Agent asked: {questions}\n"
-                        )
-                except:
-                    conversation_history += f"Step {i+1}: {h['raw'][:200]}...\n"
+        messages = [{"role": "system", "content": self.row_instruction}]
 
-        # Enhanced instruction that uses the validated input
-        instruction = f"""
-        # Instructions From System
-        {self.row_instruction}
+        # Add conversation history (last 10 messages to manage tokens)
+        recent_history = (
+            self.conversation_history[-10:]
+            if len(self.conversation_history) > 10
+            else self.conversation_history
+        )
 
-        {conversation_history}
+        for msg in recent_history:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role in ["user", "assistant"] and content:
+                messages.append({"role": role, "content": content})
 
+        # Adding more information for good prompt
+        user_prompt_final = []
+
+        current_input = f"""
         # Current Input Analysis
-        - Original Query: {context_input.query}
-        - Research Scope: {context_input.research_scope}
-        - Previous Answers: {context_input.answer_to_questions or "None provided"}
-        - User Files: {len(context_input.user_files) if context_input.user_files else 0} files
+                - Original Query: {context_input.query}
+                - Research Scope: {context_input.research_scope}
+                - Previous Answers: {context_input.answer_to_questions or "None provided"}
+                - User Files: {len(context_input.user_files) if context_input.user_files else 0} files
 
-        CRITICAL INSTRUCTION: 
-        - If user has provided answers to previous questions, INCORPORATE them into your analysis
-        - Do NOT repeat similar questions - build upon what you already know
-        - Only ask NEW clarifying questions if absolutely necessary
-        - If confidence level >= 0.7 based on existing information, set move_next = true
+                CRITICAL INSTRUCTION: 
+                - If user has provided answers to previous questions, INCORPORATE them into your analysis
+                - Do NOT repeat similar questions - build upon what you already know
+                - Only ask NEW clarifying questions if absolutely necessary
+                - If confidence level >= 0.7 based on existing information, set move_next = true
         """
 
         # Build user prompt sections using validated input
@@ -248,28 +278,96 @@ class ContextAgent(BaseAgent):
                 f"USER_FILES: {json.dumps(context_input.user_files, indent=2)}"
             )
 
+        user_prompt_final = "\n".join(current_input)
         user_prompt_final = "\n".join(sections)
 
-        return PromptTemplate(user_prompt=user_prompt_final, system_prompt=instruction)
+        messages.append({"role": "user", "content": "\n".join(user_prompt_final)})
+
+        return messages
 
     async def _parse_output(self, raw_output: str) -> Any:
         """Parse LLM output and validate structure."""
-        try:
-            parsed_output = json.loads(raw_output)
-            if parsed_output.get("type") == "final" and "answer" in parsed_output:
-                answer = parsed_output["answer"]
-                if isinstance(answer, str):
-                    answer = json.loads(answer)
-                return ContextOutput(**answer)
-        except (json.JSONDecodeError, ValueError):
-            pass
-
+        
+        # Strip markdown code fences if present
+        cleaned_output = raw_output.strip()
+        
+        # Try to extract JSON from the response
+        # Look for JSON objects in the text
+        import re
+        
+        # Pattern to find JSON objects
+        json_pattern = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}'
+        
+        # Find all potential JSON objects
+        json_matches = re.findall(json_pattern, cleaned_output, re.DOTALL)
+        
+        # Try to parse each match
+        for json_str in reversed(json_matches):  # Start from the end (likely the final output)
+            try:
+                parsed = json.loads(json_str)
+                
+                # Check if this is the answer structure we want
+                if isinstance(parsed, dict):
+                    # Case 1: {"type": "final", "answer": {...}}
+                    if parsed.get("type") == "final" and "answer" in parsed:
+                        answer = parsed["answer"]
+                        
+                        # If answer is a string, try to parse it
+                        if isinstance(answer, str):
+                            try:
+                                answer = json.loads(answer)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        if isinstance(answer, dict):
+                            # Validate it has required fields
+                            if all(key in answer for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                                return ContextOutput(**answer)
+                    
+                    # Case 2: Direct ContextOutput structure
+                    if all(key in parsed for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                        return ContextOutput(**parsed)
+            
+            except (json.JSONDecodeError, ValueError, TypeError):
+                continue
+        
+        # If no valid JSON found, try the original approach with code fence stripping
+        if cleaned_output.startswith("```"):
+            lines = cleaned_output.split("\n")
+            # Remove opening fence
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            # Remove closing fence
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned_output = "\n".join(lines).strip()
+            
+            try:
+                parsed_output = json.loads(cleaned_output)
+                if parsed_output.get("type") == "final" and "answer" in parsed_output:
+                    answer = parsed_output["answer"]
+                    
+                    if isinstance(answer, str):
+                        try:
+                            answer = json.loads(answer)
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    if isinstance(answer, dict):
+                        return ContextOutput(**answer)
+                
+                if all(key in parsed_output for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                    return ContextOutput(**parsed_output)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
         # Fallback for malformed output
+        self.logger.warning(f"Could not parse valid ContextOutput, using fallback. Raw output length: {len(raw_output)}")
         return ContextOutput(
             questions=[],
-            move_next=True,
-            confidence_level=0.8,
-            final_prompt=raw_output,
+            move_next=False,
+            confidence_level=0.0,
+            final_prompt="Failed to parse LLM output. Please try again.",
             research_parameters=ResearchParameters(
                 estimated_duration="medium",
                 complexity_level="intermediate",
@@ -288,6 +386,58 @@ class ContextAgent(BaseAgent):
         # Fallback to parent implementation for other types
         return super()._decide_action(parsed_output)
 
+    async def arun(self, user_prompt: str):
+        state = {"history": [], "tool_results": {}}
+
+        messages = self._build_messages_array(user_prompt, state)
+
+        raw_output = await self._call_llm_with_messages(messages=messages, stream=False)
+
+        try:
+            parsed_output = await self._parse_output(raw_output)
+        except Exception as e:
+            print(f"Parse failed: {e}")  # Using print instead of self.logger
+            parsed_output = raw_output
+
+        state["history"].append({"step": 1, "raw": raw_output, "parsed": parsed_output})
+
+        action = self._decide_action(parsed_output)
+
+        if action["type"] == "final":
+            answer = None
+            if isinstance(action, dict) and "answer" in action:
+                answer = action["answer"]
+            elif hasattr(parsed_output, "__dict__"):  # fallback for Pydantic/BaseModel
+                answer = parsed_output
+            else:
+                answer = parsed_output  # fallback to raw output
+
+            return AgentOutput(
+                result=answer,
+                performance={"steps": 1},
+            )
+
+    async def process(
+        self,
+        query: str,
+        answers: Optional[str] = None,
+        research_scope: str = "medium",
+        user_files: Optional[List] = None,
+    ) -> ContextOutput:
+        """
+        Single method - takes input, returns output. That's it.
+        """
+        context_input = ContextInput(
+            query=query,
+            answer_to_questions=answers,
+            research_scope=research_scope,
+            user_files=user_files,
+        )
+
+        result = await self.arun(json.dumps(context_input.model_dump()))
+        return result.result
+
+
 # ========== Testing the agent ==========
 async def run_context_agent():
     config = AgentInput(
@@ -295,10 +445,13 @@ async def run_context_agent():
         description="Context gathering before research",
         output_type=ContextOutput,
     )
-    agent = ContextAgent(config=config, model="qwen/qwen3-30b-a3b:free")
+    agent = ContextAgent(config=config, model="moonshotai/kimi-k2:free")
 
     # Initial query
-    user_query = {"query": "The Evolution of Large Language Models (2018–2025): Technical Advances, Ethical Challenges, and Industry Impacts", "research_scope": "medium"}
+    user_query = {
+        "query": "The Evolution of Large Language Models (2018–2025): Technical Advances, Ethical Challenges, and Industry Impacts",
+        "research_scope": "medium",
+    }
 
     iteration = 0
     max_question_iterations = 5

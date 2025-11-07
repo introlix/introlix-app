@@ -151,7 +151,7 @@ class ChatAgent(BaseAgent):
         ]
 
     def _build_messages_array(self, user_prompt: str, state: Dict[str, Any]) -> List[Dict]:
-        """Build messages array like ChatGPT (OpenAI format)"""
+        """Build messages array"""
         messages = [
             {"role": "system", "content": self.sys_prompt}
         ]
