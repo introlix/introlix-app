@@ -70,9 +70,10 @@ class ResearchDeskContextAgentRequest(BaseModel):
 class ResearchDesk(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
     workspace_id: Optional[str] = None
-    state: Optional[Literal["initial", "context_agent", "planner_agnet", "explorer_agent", "complete"]] = "initial" 
+    state: Optional[Literal["initial", "context_agent", "planner_agnet", "approve_plan", "explorer_agent", "complete"]] = "initial" 
     title: Optional[str] = None
     documents: Optional[dict] = None
     context_agent: Optional[ContextAgent] = None
+    planner_agent: Optional[dict] = None
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

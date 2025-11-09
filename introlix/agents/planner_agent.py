@@ -113,12 +113,14 @@ Make sure to only respond with the JSON format specified above and nothing else.
 """
 
 class PlannerAgent:
-    def __init__(self):
+    def __init__(self, model: str):
         """
         Initializes the PlannerAgent with necessary configurations.
         """
         self.PHASE_ONE_AGENT_INSTRUCTIONS = PHASE_ONE_AGENT_INSTRUCTIONS
         self.PHASE_TWO_AGENT_INSTRUCTIONS = PHASE_TWO_AGENT_INSTRUCTIONS
+
+        self.model = model
 
         self.phase_one_config = AgentInput(
             name="Phase One Agent",
@@ -133,14 +135,14 @@ class PlannerAgent:
         )
 
         self.phase_one_agent = Agent(
-            model="qwen/qwen3-235b-a22b:free",
+            model=model,
             instruction=self.PHASE_ONE_AGENT_INSTRUCTIONS,
             output_model_class=PhaseOneAgentOutput,
             config=self.phase_one_config
         )
 
         self.phase_two_agent = Agent(
-            model="qwen/qwen3-235b-a22b:free",
+            model=model,
             instruction=self.PHASE_TWO_AGENT_INSTRUCTIONS,
             output_model_class=PhaseTwoAgentOutput,
             config=self.phase_two_config
@@ -170,13 +172,15 @@ class PlannerAgent:
     
 if __name__ == "__main__":
     async def main():
-        planner_agent = PlannerAgent()
+        planner_agent = PlannerAgent(model="moonshotai/kimi-k2:free")
         enriched_prompt = (
             "Research the impact of climate change on global agriculture. "
             "Focus on changes in crop yields, shifts in agricultural zones, "
             "and the socio-economic effects on farming communities worldwide."
         )
         research_plan = await planner_agent.create_research_plan(enriched_prompt)
-        print(research_plan)
+
+        for i in range(len(research_plan.result.topics)):
+            print(research_plan.result.topics[i])
 
     asyncio.run(main())

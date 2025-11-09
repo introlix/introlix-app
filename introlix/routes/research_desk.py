@@ -12,6 +12,7 @@ from introlix.schemas import PaginatedResponse
 from introlix.utils.title_gen import generate_title
 from introlix.database import db, validate_object_id, serialize_doc
 from introlix.agents.context_agent import ContextAgent, ContextOutput, AgentInput
+from introlix.agents.planner_agent import PlannerAgent
 
 logger = logging.getLogger(__name__)
 
@@ -60,24 +61,27 @@ async def setup_research_desk(
 
     if not title or title == "":
         # Title is missing, set it
-        new_title = await generate_title(request.prompt)
+        try:
+            new_title = await generate_title(request.prompt)
 
-        await db.research_desks.update_one(
-            {"_id": research_desks["_id"]}, {"$set": {"title": new_title}}
-        )
+            await db.research_desks.update_one(
+                {"_id": research_desks["_id"]}, {"$set": {"title": new_title}}
+            )
 
-        # Update the workspace's updated_at field
-        await db.workspaces.update_one(
-            {"_id": validate_object_id(workspace_id)},
-            {"$set": {"updated_at": datetime.now()}},
-        )
+            # Update the workspace's updated_at field
+            await db.workspaces.update_one(
+                {"_id": validate_object_id(workspace_id)},
+                {"$set": {"updated_at": datetime.now()}},
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Setup failed")
 
     # Move to context agent state
     await db.research_desks.update_one(
         {"_id": research_desks["_id"]}, {"$set": {"state": "context_agent"}}
     )
 
-    return {"message": "Research Desk set up", "_id": research_desks["_id"]}
+    return {"message": "Research Desk set up"}
 
 
 @research_desk_router.patch("/{desk_id}/setup/context-agent")
@@ -193,6 +197,94 @@ async def setup_research_desk_context_agent(
         ),
         "state": next_state,
     }
+
+
+@research_desk_router.patch("/{desk_id}/setup/planner-agent")
+async def setup_research_desk_planner_agent(
+    workspace_id: str, desk_id: str, model: str
+):
+    """Build plan for research desk"""
+
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
+    research_desk = await db.research_desks.find_one(
+        {"_id": validate_object_id(desk_id)}
+    )
+    if not research_desk:
+        raise HTTPException(status_code=404, detail="Research Desk not found")
+
+    # Validate state
+    if research_desk.get("state") != "planner_agent":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Research Desk is in '{research_desk.get('state')}' state, expected 'context_agent'",
+        )
+
+    if model == "auto":
+        model = "moonshotai/kimi-k2:free"
+    else:
+        model = model
+
+    # Getting enhanced  
+    enriched_prompt = research_desk.get("context_agent").get("final_prompt")
+
+    # Process with planner agent
+    try:
+        planner_agent = PlannerAgent(model)
+
+        output = await planner_agent.create_research_plan(enriched_prompt)
+    except Exception as e:
+        logger.error(f"Context agent failed for research desk {desk_id}: {e}")
+        raise HTTPException(status_code=500, detail="Context agent processing failed")
+
+    # Determine next state
+    next_state = "approve_plan"
+
+
+    # Update research desk
+    output_data = []
+    for i in range(len(output.result.topics)):
+        data = {
+            "topic": output.result.topics[i].topic,
+            "priority": output.result.topics[i].priority,
+            "estimated_sources_needed": output.result.topics[i].estimated_sources_needed,
+            "keywords": output.result.topics[i].keywords,
+        }
+        output_data.append(data)
+
+
+    update_data = {
+        "planner_agent": {
+            "topics": output_data
+        },
+        "state": next_state,
+        "updated_at": datetime.now(),
+    }
+
+    await db.research_desks.update_one(
+        {"_id": research_desk["_id"]}, {"$set": update_data}
+    )
+
+    # Update workspace timestamp
+    await db.workspaces.update_one(
+        {"_id": validate_object_id(workspace_id)},
+        {"$set": {"updated_at": datetime.now()}},
+    )
+
+    return {
+        "topics": output_data,
+        "state": next_state,
+    }
+
+
+@research_desk_router.patch("/{desk_id}/setup/edit-plan")
+async def edit_planner_agent_plan():
+    pass
+    
 
 
 @research_desk_router.patch("/{desk_id}/docs")
