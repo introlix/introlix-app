@@ -1,7 +1,8 @@
 import json
 from datetime import datetime
 import logging
-from fastapi import APIRouter, HTTPException, Query
+from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Query, Body
 from pymongo import DESCENDING
 from introlix.models import (
     ResearchDesk,
@@ -281,10 +282,74 @@ async def setup_research_desk_planner_agent(
     }
 
 
-@research_desk_router.patch("/{desk_id}/setup/edit-plan")
-async def edit_planner_agent_plan():
-    pass
+@research_desk_router.patch("/{desk_id}/setup/planner-agent/edit")
+async def edit_research_desk_planner_agent(
+    workspace_id: str, 
+    desk_id: str,
+    topics: List[Dict[str, Any]] = Body(...)
+):
+    """Edit the research plan topics"""
+
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
+    research_desk = await db.research_desks.find_one(
+        {"_id": validate_object_id(desk_id)}
+    )
+    if not research_desk:
+        raise HTTPException(status_code=404, detail="Research Desk not found")
+
+    # Validate state - should be in approve_plan state
+    if research_desk.get("state") != "approve_plan":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Research Desk is in '{research_desk.get('state')}' state, expected 'approve_plan'",
+        )
+
+    # Get existing topics
+    existing_topics = research_desk.get("planner_agent", {}).get("topics", [])
     
+    # Check if data has actually changed
+    data_changed = existing_topics != topics
+
+    # Determine next state based on whether data changed
+    next_state = "explorer_agent"
+
+    # Validate topics structure
+    for topic in topics:
+        if not all(key in topic for key in ["topic", "priority", "estimated_sources_needed", "keywords"]):
+            raise HTTPException(
+                status_code=400,
+                detail="Each topic must have: topic, priority, estimated_sources_needed, and keywords"
+            )
+
+    # Update research desk
+    update_data = {
+        "planner_agent.topics": topics,
+        "state": next_state,
+        "updated_at": datetime.now(),
+    }
+
+    await db.research_desks.update_one(
+        {"_id": research_desk["_id"]}, 
+        {"$set": update_data}
+    )
+
+    # Update workspace timestamp
+    await db.workspaces.update_one(
+        {"_id": validate_object_id(workspace_id)},
+        {"$set": {"updated_at": datetime.now()}},
+    )
+
+    return {
+        "topics": topics,
+        "state": next_state,
+        "data_changed": data_changed,
+        "message": "Research plan updated successfully" if data_changed else "No changes detected, moving to explorer_agent"
+    }
 
 
 @research_desk_router.patch("/{desk_id}/docs")
