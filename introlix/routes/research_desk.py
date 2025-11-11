@@ -1,3 +1,12 @@
+"""
+Research Desk API endpoints for managing research workflows.
+
+This module handles the lifecycle of research desks including:
+- Creation and setup
+- Context gathering via AI agents
+- Research planning
+- Document management
+"""
 import json
 from datetime import datetime
 import logging
@@ -14,6 +23,7 @@ from introlix.utils.title_gen import generate_title
 from introlix.database import db, validate_object_id, serialize_doc
 from introlix.agents.context_agent import ContextAgent, ContextOutput, AgentInput
 from introlix.agents.planner_agent import PlannerAgent
+from introlix.agents.explorer_agent import ExplorerAgent
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +34,20 @@ research_desk_router = APIRouter(
 
 @research_desk_router.post("/new")
 async def create_research_desk(workspace_id: str, request: ResearchDesk):
+    """
+    Creating a new research desk.
+
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        request: (ResearchDesk): Data for new workspace.
+
+    returns:
+        message: Success message
+        _id: Id for created research desk.
+
+    Raises:
+        HTTPException: 404 if Workspace not found
+    """
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
 
     if not workspace:
@@ -39,7 +63,22 @@ async def create_research_desk(workspace_id: str, request: ResearchDesk):
 async def setup_research_desk(
     workspace_id: str, desk_id: str, request: ResearchDeskRequest
 ):
-    """Preparing a already existing research desk for a workspace."""
+    """
+    Preparing a already existing research desk by adding a new title based on the prompt.
+
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk.
+        request: (ResearchDeskRequest): Data for research desk setup.
+
+    Return: 
+        message: Success Message
+    
+    Raises:
+        HTTPException: 404 if workspace not found
+        HTTPException: 400 if desk is already setup
+        HTTPException: 500 if setup fail
+    """
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
 
     if not workspace:
@@ -89,7 +128,26 @@ async def setup_research_desk(
 async def setup_research_desk_context_agent(
     workspace_id: str, desk_id: str, request: ResearchDeskContextAgentRequest
 ):
-    """Enhance user prompt using context agent before setting up research desk."""
+    """
+    Enhance user prompt using context agent before setting up research desk.
+    
+    The context agent asks clarifying questions to better understand the research
+    scope and builds a more detailed prompt for the research process.
+    
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to enhance
+        request (ResearchDeskContextAgentRequest): Contains the user prompt, answers to previous questions, and model preference
+        
+    Returns:
+        dict: Contains questions for user, move_next flag, confidence level,
+              final prompt if ready, and updated state
+              
+    Raises:
+        HTTPException: 404 if workspace/desk not found
+        HTTPException: 400 if desk is not in 'context_agent' state
+        HTTPException: 500 if context agent processing fails
+    """
 
     # Validate workspace
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
@@ -204,7 +262,24 @@ async def setup_research_desk_context_agent(
 async def setup_research_desk_planner_agent(
     workspace_id: str, desk_id: str, model: str
 ):
-    """Build plan for research desk"""
+    """
+    Creating a dedicated plan for the research.
+    
+    The planner agent creates plan with keywords that will be searched on interent to find better articles/paper for the desk.
+    
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to enhance
+        model (str): Model to be used
+        
+    Returns:
+        dict: Contains topic, priority, estimated_sources_needed and keywords.
+              
+    Raises:
+        HTTPException: 404 if workspace/desk not found
+        HTTPException: 400 if desk is not in 'planner_agent' state
+        HTTPException: 500 if planner agent processing fails
+    """
 
     # Validate workspace
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
@@ -222,7 +297,7 @@ async def setup_research_desk_planner_agent(
     if research_desk.get("state") != "planner_agent":
         raise HTTPException(
             status_code=400,
-            detail=f"Research Desk is in '{research_desk.get('state')}' state, expected 'context_agent'",
+            detail=f"Research Desk is in '{research_desk.get('state')}' state, expected 'planner_agent'",
         )
 
     if model == "auto":
@@ -239,8 +314,8 @@ async def setup_research_desk_planner_agent(
 
         output = await planner_agent.create_research_plan(enriched_prompt)
     except Exception as e:
-        logger.error(f"Context agent failed for research desk {desk_id}: {e}")
-        raise HTTPException(status_code=500, detail="Context agent processing failed")
+        logger.error(f"Planner agent failed for research desk {desk_id}: {e}")
+        raise HTTPException(status_code=500, detail="Planner agent processing failed")
 
     # Determine next state
     next_state = "approve_plan"
@@ -288,7 +363,25 @@ async def edit_research_desk_planner_agent(
     desk_id: str,
     topics: List[Dict[str, Any]] = Body(...)
 ):
-    """Edit the research plan topics"""
+    """
+    Edits the plan generated by planner agent.
+
+    This is also used for confirm plan generated by planner agent. When plan is generated then state will be approve_plan rather
+    explorer_agent. So, user can confirm the plan for edit it and then confirm and then it will move to explorer_agent.
+
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to enhance
+        topics: (List[Dict[str, Any]]): The edited data data will be saved in DB.
+
+    Returns: 
+        dict: contains topics, state and message.
+
+    Raises:
+        HTTPException: 404 if workspace/desk not found
+        HTTPException: 400 if desk is not in 'planner_agent' state
+        HTTPException: 404 if there is any missing keys
+    """
 
     # Validate workspace
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
@@ -347,13 +440,98 @@ async def edit_research_desk_planner_agent(
     return {
         "topics": topics,
         "state": next_state,
-        "data_changed": data_changed,
         "message": "Research plan updated successfully" if data_changed else "No changes detected, moving to explorer_agent"
     }
 
 
+@research_desk_router.patch("/{desk_id}/setup/explorer-agent")
+async def setup_research_desk_explorer_agent(
+    workspace_id: str, desk_id: str, model: str
+):
+    """
+    Getting data from internet based on the keywords.
+
+    The explorer agent gets data from internet based on the keywords and then stores it in the database.
+    
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to enhance
+        model (str): Model to be used
+        
+    Returns:
+        dict: Contains status, code and message.
+        
+    Raises:
+        HTTPException: 404 if workspace/desk not found
+        HTTPException: 400 if desk is not in 'explorer_agent' state
+        HTTPException: 500 if explorer agent processing fails
+    """
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
+    research_desk = await db.research_desks.find_one(
+        {"_id": validate_object_id(desk_id)}
+    )
+    if not research_desk:
+        raise HTTPException(status_code=404, detail="Research Desk not found")
+    
+        # Validate state - should be in explorer_agent state
+    if research_desk.get("state") != "explorer_agent":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Research Desk is in '{research_desk.get('state')}' state, expected 'explorer_agent'",
+        )
+    
+    if model == "auto":
+        model = "moonshotai/kimi-k2:free"
+    else:
+        model = model
+
+    # Getting keywords from plan to search
+    keywords = []
+    
+    if research_desk.get("planner_agent"):
+        topics = research_desk.get("planner_agent", {}).get("topics", [])
+        for topic in topics:
+            keywords.extend(topic.get("keywords", []))
+    
+    if len(keywords) == 0:
+        raise HTTPException(status_code=400, detail="No keywords found in the plan")
+
+    try:
+        explorer_agent = ExplorerAgent(queries=keywords, unique_id=workspace_id, get_answer=False, get_multiple_answer=False, max_results=5, model=model)
+        await explorer_agent.run()
+    except Exception as e:
+        logger.error(f"Explorer agent failed for research desk {desk_id}: {e}")
+        raise HTTPException(status_code=500, detail="Explorer agent processing failed")
+
+    # move to complete state
+    await db.research_desks.update_one(
+        {"_id": research_desk["_id"]}, {"$set": {"state": "complete"}}
+    )
+
+    # Update workspace timestamp
+    await db.workspaces.update_one(
+        {"_id": validate_object_id(workspace_id)},
+        {"$set": {"updated_at": datetime.now()}},
+    )
+    
+    return {"status": "success", "code": 200, "message": "Successfully got data from internet"}
+
+
 @research_desk_router.patch("/{desk_id}/docs")
 async def add_documents(workspace_id: str, desk_id: str, documents: dict):
+    """
+    Adding documents to the research desk.
+    
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to enhance
+        documents (dict): Contains the documents to be added
+    """
     desk = await db.research_desks.find_one({"_id": validate_object_id(desk_id)})
 
     if not desk:
@@ -376,6 +554,27 @@ async def add_documents(workspace_id: str, desk_id: str, documents: dict):
 async def get_desks(
     workspace_id: str, page: int = Query(1, ge=1), limit: int = Query(10, ge=1)
 ):
+    """
+    For getting list of research desks that exist in a workspace.
+
+    Args:
+        workspace_id (str): ID of the workspace containing the research desks
+        page (int): Page number
+        limit (int): Number of research desks per page
+        
+    Returns:
+        dict: Contains items, total, page and limit.
+        
+    Raises:
+        HTTPException: 404 if workspace not found
+        HTTPException: 500 if getting research desks fails
+    """
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desks
     object_id = validate_object_id(workspace_id)
 
     desk_total = await db.research_desks.count_documents(
@@ -398,6 +597,25 @@ async def get_desks(
 
 @research_desk_router.get("/{desk_id}")
 async def get_desk(workspace_id: str, desk_id: str):
+    """
+    For getting a specific research desk by its ID.
+    
+    Args:
+        workspace_id (str): ID of the workspace containing the research desk
+        desk_id (str): ID of the research desk to get
+        
+    Returns:
+        dict: Contains research desk data.
+        
+    Raises:
+        HTTPException: 404 if workspace/desk not found
+    """
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
     desk = await db.research_desks.find_one({"_id": validate_object_id(desk_id)})
 
     if not desk:

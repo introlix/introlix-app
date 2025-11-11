@@ -71,31 +71,31 @@ def filter_agent_output_parser(raw_output: str) -> SearchResults:
     )
 
 
-config = AgentInput(
-    name="FilterAgent",
-    description="Filter For SearXNG results",
-    output_type=SearchResults,
-    output_parser=filter_agent_output_parser,
-)
-
-filter_agent = Agent(
-    model="google/gemini-2.5-flash",
-    instruction=FILTER_AGENT_INSTRUCTIONS,
-    config=config,
-    output_model_class=SearchResults,
-)
-
-
 class SearXNGClient:
-    def __init__(self, filter_agent: Agent):
-        self.filter_agent = filter_agent
+    def __init__(self, model: str):
         self.host = SEARCHXNG_HOST
+        self.model = model
+
         if not self.host.endswith("/search"):
             self.host = (
                 f"{self.host}/search"
                 if not self.host.endswith("/")
                 else f"{self.host}search"
             )
+
+        self.config = AgentInput(
+            name="FilterAgent",
+            description="Filter For SearXNG results",
+            output_type=SearchResults,
+            output_parser=filter_agent_output_parser,
+        )
+
+        self.filter_agent = Agent(
+            model=model,
+            instruction=FILTER_AGENT_INSTRUCTIONS,
+            config=self.config,
+            output_model_class=SearchResults,
+        )
 
     async def search(
         self, query: str, max_results: int = 5
@@ -124,7 +124,7 @@ class SearXNGClient:
             async with session.get(self.host, params=params) as response:
                 response.raise_for_status()
                 results = await response.json()
-            
+
             results_list = [
                 WebpageSnippet(
                     url=result.get("url", ""),
@@ -158,7 +158,7 @@ class SearXNGClient:
         """
 
         try:
-            agent_output = await filter_agent.run(user_prompt)
+            agent_output = await self.filter_agent.run(user_prompt)
             if isinstance(agent_output, AgentOutput):
                 result = agent_output.result
                 if isinstance(result, SearchResults):
@@ -170,6 +170,6 @@ class SearXNGClient:
 
 
 if __name__ == "__main__":
-    client = SearXNGClient(filter_agent=filter_agent)
+    client = SearXNGClient()
     results = asyncio.run(client.search(query="What is coding?"))
     print(results)

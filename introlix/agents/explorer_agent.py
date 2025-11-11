@@ -13,7 +13,7 @@ from introlix.config import PINECONE_KEY
 from introlix.agents.base_agent import Agent
 from introlix.agents.baseclass import AgentInput, Tool
 from introlix.tools.web_crawler import web_crawler, ScrapeResult
-from introlix.tools.web_search import SearXNGClient, filter_agent, WebpageSnippet
+from introlix.tools.web_search import SearXNGClient
 from introlix.utils.text_chunker import TextChunker
 
 class ExplorerAgentOutput(BaseModel):
@@ -80,7 +80,7 @@ Note: If the title of the website does not match or is not good then don't get d
 """
 
 class ExplorerAgent:
-    def __init__(self, queries: list, unique_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5):
+    def __init__(self, queries: list, unique_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5, model="google/gemini-2.5-flash"):
         """
         Initializes the ExplorerAgent with configuration parameters.
         Args:
@@ -95,6 +95,7 @@ class ExplorerAgent:
         self.get_answer = get_answer
         self.get_multiple_answer = get_multiple_answer
         self.max_results = max_results
+        self.model = model
 
         self.pc = Pinecone(api_key=PINECONE_KEY)
         self.index_name = "explored-data-index"
@@ -106,13 +107,13 @@ class ExplorerAgent:
         )
 
         self.explorer_agent = Agent(
-            model="google/gemini-2.5-flash",
+            model=model,
             instruction=self.INSTRUCTION,
             output_model_class=ExplorerAgentOutput,
             config=self.explorer_config
         )
 
-        self.search_tool = SearXNGClient(filter_agent=filter_agent)
+        self.search_tool = SearXNGClient(model=model)
 
         self._setup_index()
     
@@ -380,10 +381,11 @@ if __name__ == "__main__":
     explorer_agent = ExplorerAgent(
         queries=["Who is CEO of OPENAI?"], 
         unique_id="68fe0850fc39fbc33364c7e1", 
-        get_answer=True, 
+        get_answer=False, 
         get_multiple_answer=False, 
-        max_results=2
+        max_results=2,
+        model="moonshotai/kimi-k2:free"
     )
     results = asyncio.run(explorer_agent.run())
-    for result in results:
-        print(result.summary)
+    # for result in results:
+    #     print(result.summary)
