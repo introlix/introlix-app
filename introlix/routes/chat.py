@@ -60,7 +60,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
         )
     
     if request.model == "auto":
-        model = "gpt-5"
+        model = "moonshotai/kimi-k2:free"
     else:
         model = request.model
 

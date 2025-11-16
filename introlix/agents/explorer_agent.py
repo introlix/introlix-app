@@ -15,6 +15,7 @@ from introlix.agents.baseclass import AgentInput, Tool
 from introlix.tools.web_crawler import web_crawler, ScrapeResult
 from introlix.tools.web_search import SearXNGClient
 from introlix.utils.text_chunker import TextChunker
+from sentence_transformers import SentenceTransformer
 
 class ExplorerAgentOutput(BaseModel):
     topic: str = Field(description="The topic of the research")
@@ -67,7 +68,7 @@ Required JSON structure:
     "urls": [""],
     "summary": "No Data Found",
     "relevance_score": 0.0,
-    "source_type": "commercial"
+    "source_type": ""
   }}
 
 ## REMEMBER: 
@@ -99,6 +100,8 @@ class ExplorerAgent:
 
         self.pc = Pinecone(api_key=PINECONE_KEY)
         self.index_name = "explored-data-index"
+
+        self.embedding_model = SentenceTransformer("google/embeddinggemma-300m")
 
         self.explorer_config = AgentInput(
             name="CrawlerAgent",
@@ -166,31 +169,43 @@ class ExplorerAgent:
             # Process each query separately
             for query in queries_to_search:
                 results = []
-                # ADDED: Filter by unique_id
-                results_ = self.index.search(
-                    namespace="Search",
-                    query={
-                        "top_k": 3,
-                        "inputs": {
-                            "text": query
-                        },
-                        "filter": {
-                            "unique_id": self.unique_id
+                try:
+                    # ADDED: Filter by unique_id
+                    results_ = self.index.search(
+                        namespace="Search",
+                        query={
+                            "top_k": 3,
+                            "inputs": {
+                                "text": query
+                            },
+                            "filter": {
+                                "unique_id": self.unique_id
+                            }
                         }
-                    }
-                )
-                
-                for hit in results_['result']['hits']:
-                    data = {
-                        "_id": hit['_id'],
-                        "title": hit['fields']['title'],
-                        "description": hit['fields']['description'],
-                        "url": hit['fields']['url'],
-                        "chunk_id": hit['fields']['chunk_id'],
-                        "chunk_text": hit['fields']['chunk_text'],
-                        "score": hit['_score']
-                    }
-                    results.append(data)
+                    )
+                    
+                    # Safely extract hits from search results
+                    hits = results_.get('result', {}).get('hits', [])
+                    for hit in hits:
+                        try:
+                            data = {
+                                "_id": hit.get('_id', ''),
+                                "title": hit.get('fields', {}).get('title', ''),
+                                "description": hit.get('fields', {}).get('description', ''),
+                                "url": hit.get('fields', {}).get('url', ''),
+                                "chunk_id": hit.get('fields', {}).get('chunk_id', ''),
+                                "chunk_text": hit.get('fields', {}).get('chunk_text', ''),
+                                "score": hit.get('_score', 0.0)
+                            }
+                            results.append(data)
+                        except Exception as e:
+                            print(f"Error parsing search hit: {e}")
+                            continue
+                except Exception as e:
+                    print(f"Error searching Pinecone for query '{query}': {e}")
+                    # If search fails, mark query as needing data
+                    queries_needing_data.append(query)
+                    continue
                 
                 # Check if we found any results for this query
                 if not results:
@@ -247,9 +262,16 @@ class ExplorerAgent:
                 )
                 
                 # Combine results from successful queries and retried queries
+                # Only add valid results (not error messages)
                 if isinstance(retry_results, list):
-                    all_answers.extend(retry_results)
-                elif retry_results.summary:  # Single result
+                    # Filter out error results from the list
+                    valid_results = [
+                        r for r in retry_results 
+                        if r.summary and r.summary != "No valid data found after retries" and r.summary != "No Data Found"
+                    ]
+                    all_answers.extend(valid_results)
+                elif retry_results and retry_results.summary and retry_results.summary != "No valid data found after retries" and retry_results.summary != "No Data Found":
+                    # Only add if it's a valid result (not an error)
                     all_answers.append(retry_results)
             
             # Return results based on mode
@@ -260,7 +282,7 @@ class ExplorerAgent:
                     urls=[],
                     summary="No valid data found after retries",
                     relevance_score=0,
-                    source_type="commercial",
+                    source_type="",
                 )
             
             return all_answers
@@ -278,6 +300,8 @@ class ExplorerAgent:
         """
         records = []
         BATCH_SIZE = 96
+        QUERY_BATCH_SIZE = 5  # Process 5 queries at a time
+        BATCH_DELAY = 2  # Wait 2 seconds between batches
         queries_to_process = queries if queries else self.queries
 
         async def process_query(query: str):
@@ -289,7 +313,7 @@ class ExplorerAgent:
                 url = result.url
                 if self.is_url_exists(url):
                     continue
-                crawl_tasks.append(self._crawl_and_chunk(url))
+                crawl_tasks.append(self._crawl_and_chunk(query, url))
 
             query_records = await asyncio.gather(*crawl_tasks, return_exceptions=True)
 
@@ -303,18 +327,31 @@ class ExplorerAgent:
 
             return flat_records
 
-        # Run all queries concurrently
-        all_query_results = await asyncio.gather(
-            *[process_query(q) for q in queries_to_process],
-            return_exceptions=True
-        )
+        # Process queries in batches of 5 to avoid search tool timeouts
+        total_queries = len(queries_to_process)
+        for batch_start in range(0, total_queries, QUERY_BATCH_SIZE):
+            batch_end = min(batch_start + QUERY_BATCH_SIZE, total_queries)
+            batch_queries = queries_to_process[batch_start:batch_end]
+            
+            print(f"Processing query batch {batch_start // QUERY_BATCH_SIZE + 1} ({len(batch_queries)} queries: {batch_start+1}-{batch_end} of {total_queries})")
+            
+            # Process current batch concurrently
+            batch_results = await asyncio.gather(
+                *[process_query(q) for q in batch_queries],
+                return_exceptions=True
+            )
 
-        # Flatten all records
-        for q_res in all_query_results:
-            if isinstance(q_res, list):
-                records.extend(q_res)
-            elif isinstance(q_res, Exception):
-                print(f"Error during query processing: {q_res}")
+            # Flatten batch records
+            for q_res in batch_results:
+                if isinstance(q_res, list):
+                    records.extend(q_res)
+                elif isinstance(q_res, Exception):
+                    print(f"Error during query processing: {q_res}")
+            
+            # Wait before processing next batch (except for the last batch)
+            if batch_end < total_queries:
+                print(f"Waiting {BATCH_DELAY} seconds before next batch...")
+                await asyncio.sleep(BATCH_DELAY)
 
         # Batch upsert to Pinecone
         if records:
@@ -324,7 +361,7 @@ class ExplorerAgent:
                 self.index.upsert_records(namespace="Search", records=batch)
 
 
-    async def _crawl_and_chunk(self, url: str) -> list:
+    async def _crawl_and_chunk(self, query: str, url: str) -> list:
         """
         Helper method to crawl a URL and create chunks
         Returns a list of chunk records
@@ -342,21 +379,37 @@ class ExplorerAgent:
                 crawled_result.text if isinstance(crawled_result, ScrapeResult) else crawled_result
             )
 
-            # Create chunk records - ADDED: unique_id in metadata
-            chunks = [
-                {
-                    "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
-                    "unique_id": self.unique_id,
-                    "title": crawled_result.title,
-                    "description": crawled_result.description,
-                    "url": crawled_result.url,
-                    "chunk_id": chunk['chunk_id'],
-                    "chunk_text": chunk['text']
-                }
-                for chunk in chunks
-            ]
+            # Extract chunk texts for embedding
+            chunk_texts = [chunk['text'] for chunk in chunks]
+
+            # Generate embeddings
+            query_embedding = self.embedding_model.encode_query(query)
+            chunk_embeddings = self.embedding_model.encode_document(chunk_texts)
+
+            # Calculate similarity scores
+            similarities = self.embedding_model.similarity(query_embedding, chunk_embeddings)[0]
+
+            # Filter chunks based on similarity threshold
+            relevant_chunks = []
+            similarity_threshold = 0.35
+
+            for idx, chunk in enumerate(chunks):
+                similarity_score = float(similarities[idx])
+
+                if similarity_score >= similarity_threshold:
+                    # Create chunk records
+                    chunk_record = {
+                        "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
+                        "unique_id": self.unique_id,
+                        "title": crawled_result.title,
+                        "description": crawled_result.description,
+                        "url": crawled_result.url,
+                        "chunk_id": chunk['chunk_id'],
+                        "chunk_text": chunk['text']
+                    }
+                    relevant_chunks.append(chunk_record)
             
-            return chunks
+            return relevant_chunks
         except Exception as e:
             print(f"Error processing {url}: {e}")
             return []
@@ -381,11 +434,12 @@ if __name__ == "__main__":
     explorer_agent = ExplorerAgent(
         queries=["Who is CEO of OPENAI?"], 
         unique_id="68fe0850fc39fbc33364c7e1", 
-        get_answer=False, 
+        get_answer=True, 
         get_multiple_answer=False, 
         max_results=2,
         model="moonshotai/kimi-k2:free"
     )
     results = asyncio.run(explorer_agent.run())
+    print(results)
     # for result in results:
     #     print(result.summary)

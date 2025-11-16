@@ -494,7 +494,7 @@ async def setup_research_desk_explorer_agent(
     keywords = []
     
     if research_desk.get("planner_agent"):
-        topics = research_desk.get("planner_agent", {}).get("topics", [])
+        topics = [x for x in research_desk.get("planner_agent", {}).get("topics", []) if x.get("priority") == "high"]
         for topic in topics:
             keywords.extend(topic.get("keywords", []))
     
@@ -502,7 +502,7 @@ async def setup_research_desk_explorer_agent(
         raise HTTPException(status_code=400, detail="No keywords found in the plan")
 
     try:
-        explorer_agent = ExplorerAgent(queries=keywords, unique_id=workspace_id, get_answer=False, get_multiple_answer=False, max_results=5, model=model)
+        explorer_agent = ExplorerAgent(queries=keywords[:20], unique_id=workspace_id, get_answer=False, get_multiple_answer=False, max_results=5, model=model)
         await explorer_agent.run()
     except Exception as e:
         logger.error(f"Explorer agent failed for research desk {desk_id}: {e}")
