@@ -5,7 +5,7 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
-
+// -------------------- CHAT --------------------
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -54,18 +54,39 @@ export interface SendMessageRequest {
   agent: string;
 }
 
-// Research Desk
+// -------------------- RESEARCH DESK --------------------
 export interface CreateResearchDeskRequest {
   workspace_id?: string;
   title?: string;
   documents?: object;
 }
 
+export interface ContextAgent {
+  id: string | null;
+  conv_history: string;
+  questions: Array<string>;
+  move_next: boolean;
+  confidence_level: number;
+  final_prompt: string;
+  research_parameters: object;
+}
+
 export interface ResearchDesk {
   id: string | null;
-  workspace_id: string;
-  title: string;
-  documents: object;
+  workspace_id?: string;
+  state?: string;
+  title?: string;
+  documents?: object;
+  context_agent: ContextAgent;
+  planner_agent?: object;
   created_at: string;
   updated_at: string;
+}
+
+export interface ResearchDeskContextAgentRequest {
+  prompt: string;
+  model: string;
+  answers?: Array<string>;
+  research_scope: string;
+  user_files?: Array<object>;
 }

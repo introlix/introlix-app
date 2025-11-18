@@ -298,11 +298,18 @@ class ExplorerAgent:
         Args:
             queries: List of queries to process. If None, uses self.queries
         """
-        records = []
-        BATCH_SIZE = 96
         QUERY_BATCH_SIZE = 5  # Process 5 queries at a time
         BATCH_DELAY = 2  # Wait 2 seconds between batches
         queries_to_process = queries if queries else self.queries
+
+        def save_records(records: list):
+            """Persist records to Pinecone in small batches as soon as they are available."""
+            if not records:
+                return
+            BATCH_SIZE = 96
+            for i in range(0, len(records), BATCH_SIZE):
+                batch = records[i:i + BATCH_SIZE]
+                self.index.upsert_records(namespace="Search", records=batch)
 
         async def process_query(query: str):
             search_results = await self.search_tool.search(query=query, max_results=self.max_results)
@@ -315,13 +322,20 @@ class ExplorerAgent:
                     continue
                 crawl_tasks.append(self._crawl_and_chunk(query, url))
 
-            query_records = await asyncio.gather(*crawl_tasks, return_exceptions=True)
+            if not crawl_tasks:
+                return []
 
-            # Flatten and filter errors
             flat_records = []
-            for rec_list in query_records:
-                if isinstance(rec_list, list):
+            for task in asyncio.as_completed(crawl_tasks):
+                try:
+                    rec_list = await task
+                except Exception as e:
+                    print(f"Error during crawling: {e}")
+                    continue
+
+                if isinstance(rec_list, list) and rec_list:
                     flat_records.extend(rec_list)
+                    save_records(rec_list)
                 elif isinstance(rec_list, Exception):
                     print(f"Error during crawling: {rec_list}")
 
@@ -343,22 +357,13 @@ class ExplorerAgent:
 
             # Flatten batch records
             for q_res in batch_results:
-                if isinstance(q_res, list):
-                    records.extend(q_res)
-                elif isinstance(q_res, Exception):
+                if isinstance(q_res, Exception):
                     print(f"Error during query processing: {q_res}")
             
             # Wait before processing next batch (except for the last batch)
             if batch_end < total_queries:
                 print(f"Waiting {BATCH_DELAY} seconds before next batch...")
                 await asyncio.sleep(BATCH_DELAY)
-
-        # Batch upsert to Pinecone
-        if records:
-            for i in range(0, len(records), BATCH_SIZE):
-                batch = records[i:i + BATCH_SIZE]
-                # ADDED: Pass unique_id to upsert_records
-                self.index.upsert_records(namespace="Search", records=batch)
 
 
     async def _crawl_and_chunk(self, query: str, url: str) -> list:
@@ -397,6 +402,7 @@ class ExplorerAgent:
                 similarity_score = float(similarities[idx])
 
                 if similarity_score >= similarity_threshold:
+                    print("Saving with score", similarity_score)
                     # Create chunk records
                     chunk_record = {
                         "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
@@ -408,6 +414,8 @@ class ExplorerAgent:
                         "chunk_text": chunk['text']
                     }
                     relevant_chunks.append(chunk_record)
+                else:
+                    print("Skip with score", similarity_score)
             
             return relevant_chunks
         except Exception as e:

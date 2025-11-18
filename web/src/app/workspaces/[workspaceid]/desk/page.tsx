@@ -29,7 +29,9 @@ export default function ResearchDesk() {
       // Create chat (backend handles title)
       const result = await createDesk.mutateAsync({});
       router.push(
-        `/workspaces/${workspaceId}/desk/${result._id}`
+        `/workspaces/${workspaceId}/chat/${result._id}?prompt=${encodeURIComponent(
+          data.prompt
+        )}`
       );
     } catch (error) {
       console.error("Failed to create chat:", error);
