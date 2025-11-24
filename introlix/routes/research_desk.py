@@ -12,11 +12,14 @@ from datetime import datetime
 import logging
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi.responses import StreamingResponse
 from pymongo import DESCENDING
 from introlix.models import (
     ResearchDesk,
     ResearchDeskRequest,
     ResearchDeskContextAgentRequest,
+    EditDocRequest,
+    Message
 )
 from introlix.schemas import PaginatedResponse
 from introlix.utils.title_gen import generate_title
@@ -24,6 +27,9 @@ from introlix.database import db, validate_object_id, serialize_doc
 from introlix.agents.context_agent import ContextAgent, ContextOutput, AgentInput
 from introlix.agents.planner_agent import PlannerAgent
 from introlix.agents.explorer_agent import ExplorerAgent
+from introlix.agents.chat_agent import ChatAgent
+from introlix.agents.edit_agent import EditAgent
+from introlix.services.LLMState import LLMState
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +37,7 @@ research_desk_router = APIRouter(
     prefix="/workspace/{workspace_id}/research-desk", tags=["research_desk"]
 )
 
+llm_state = LLMState()
 
 @research_desk_router.post("/new")
 async def create_research_desk(workspace_id: str, request: ResearchDesk):
@@ -549,6 +556,177 @@ async def add_documents(workspace_id: str, desk_id: str, documents: dict):
 
     return {"message": "Documents added to Research Desk"}
 
+
+@research_desk_router.post("/{desk_id}/edit-doc")
+async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest):
+    """
+    Edit a document using an AI agent.
+    
+    Args:
+        workspace_id (str): ID of the workspace
+        desk_id (str): ID of the research desk
+        request (EditDocRequest): Contains prompt, model
+        
+    Returns:
+        dict: Status message
+    """
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
+    research_desk = await db.research_desks.find_one(
+        {"_id": validate_object_id(desk_id)}
+    )
+    if not research_desk:
+        raise HTTPException(status_code=404, detail="Research Desk not found")
+
+    if request.model == "auto":
+        model = "moonshotai/kimi-k2:free"
+    else:
+        model = request.model
+
+    # Getting the document written till now if written
+    current_docs = research_desk.get("documents", {}) or {}
+    if current_docs:
+        currnet_content = current_docs.get("content", "")
+    else:
+        currnet_content = ""
+
+    # Initialize EditAgent
+    edit_agent = EditAgent(
+        unique_id=workspace_id,
+        model=model,
+        current_content=currnet_content
+    )
+
+    try:
+        # Run agent to get new content
+        new_content = await edit_agent.run(request.prompt)
+        
+        # Update document in database
+        if isinstance(current_docs, dict):
+            current_docs["content"] = new_content
+        else:
+            # If it's not a dict (unlikely based on type hint but possible in mongo), make it one
+            current_docs = {"content": new_content}
+
+        # Create user message
+        user_msg = Message(
+            role="user",
+            content=request.prompt,
+            created_at=datetime.now()
+        )
+
+        if new_content:
+            assistant_info = "I have updated the document based on your instructions."
+        else:
+            assistant_info = "Fail to update the document based on your instructions."
+
+        # Create assistant message
+        assistant_msg = Message(
+            role="assistant",
+            content=assistant_info,
+            created_at=datetime.now(),
+            model=model
+        )
+
+        await db.research_desks.update_one(
+            {"_id": research_desk["_id"]},
+            {
+                "$set": {
+                    "documents": current_docs,
+                    "updated_at": datetime.now()
+                },
+                "$push": {
+                    "messages": {"$each": [user_msg.model_dump(), assistant_msg.model_dump()]}
+                }
+            }
+        )
+        
+        # Update workspace timestamp
+        await db.workspaces.update_one(
+            {"_id": validate_object_id(workspace_id)},
+            {"$set": {"updated_at": datetime.now()}},
+        )
+
+        return {"status": "success", "message": "Document edited successfully"}
+
+    except Exception as e:
+        logger.error(f"Edit agent failed for research desk {desk_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Edit agent failed: {str(e)}")
+
+@research_desk_router.post('/{desk_id}/chat')
+async def chat(workspace_id: str, desk_id: str, request: ResearchDeskRequest):
+    # Validate workspace
+    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    # Get research desk
+    research_desk = await db.research_desks.find_one(
+        {"_id": validate_object_id(desk_id)}
+    )
+    if not research_desk:
+        raise HTTPException(status_code=404, detail="Research Desk not found")
+    
+    if request.model == "auto":
+        model = "moonshotai/kimi-k2:free"
+    else:
+        model = request.model
+
+    # Load chat history from database
+    messages = research_desk.get("messages", [])
+
+    # Create user message
+    user_message = Message(
+        role="user",
+        content=request.prompt,
+        created_at=datetime.now()
+    )
+
+    # Add user message to database
+    await db.research_desks.update_one(
+        {"_id": research_desk["_id"]},
+        {
+            "$push": {"messages": user_message.model_dump()},
+            "$set": {"updated_at": datetime.now()}
+        }
+    )
+
+    # Initialize chat agent with history
+    chat_agent = ChatAgent(
+        unique_id=workspace_id, # This takes workspace_id as data are shared in between workspace
+        model=model,
+        conversation_history=messages
+    )
+
+    # Collect assistant response
+    assistant_content = ""
+    async def stream():
+        nonlocal assistant_content
+        async for chunk in chat_agent.arun(request.prompt):
+            assistant_content += chunk
+            yield chunk
+
+        # After streaming completes, save assistant message
+        assistant_message = Message(
+            role="assistant",
+            content=assistant_content,
+            created_at=datetime.now(),
+            model=model
+        )
+
+        await db.research_desks.update_one(
+            {"_id": research_desk["_id"]},
+            {
+                "$push": {"messages": assistant_message.model_dump()},
+                "$set": {"updated_at": datetime.now()}
+            }
+        )
+            
+    return StreamingResponse(stream(), media_type="text/plain")
 
 @research_desk_router.get("/", response_model=PaginatedResponse)
 async def get_desks(

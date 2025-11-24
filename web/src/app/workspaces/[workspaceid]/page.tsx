@@ -9,13 +9,7 @@ import { useEffect, useRef, useState } from "react";
 
 const MAX_RENDERED_ITEMS = 50;
 
-// Replace this with your actual API call
-// Check your lib/api.ts file for the correct function
 async function getWorkspaceItems(workspaceId: string, page: number, limit: number) {
-    // OPTION 1: If you have a function in lib/api.ts, import and use it
-    // import { getWorkspaceItems } from '@/lib/api';
-    
-    // OPTION 2: Use the correct API endpoint
     const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const res = await fetch(`${BASE_URL}/workspaces/${workspaceId}/items?page=${page}&limit=${limit}`);
     if (!res.ok) {
@@ -29,7 +23,7 @@ export default function WorkspaceDetailPage() {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [loading, setLoading] = useState(false);
-    
+
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const loadMoreRef = useRef<HTMLDivElement>(null);
     const params = useParams();
@@ -42,11 +36,10 @@ export default function WorkspaceDetailPage() {
 
     const loadWorkspaceItems = async (pageNum: number, reset: boolean = false) => {
         if (loading) return;
-        
+
         setLoading(true);
         try {
             const res = await getWorkspaceItems(workspaceId, pageNum, 10);
-            
             if (reset) {
                 setWorkspaceItems(res.items || []);
             } else {
@@ -60,7 +53,7 @@ export default function WorkspaceDetailPage() {
                     return newItems;
                 });
             }
-            
+
             // Check if there are more items to load
             const itemsLength = res.items?.length || 0;
             const total = res.total || 0;
@@ -89,7 +82,6 @@ export default function WorkspaceDetailPage() {
         );
 
         observer.observe(loadMoreRef.current);
-
         return () => observer.disconnect();
     }, [hasMore, loading, page]);
 
@@ -108,8 +100,8 @@ export default function WorkspaceDetailPage() {
                         </Button>
                     </Link>
                     <Link href={`/workspaces/${workspaceId}/chat`}>
-                        <Button 
-                            variant="outline" 
+                        <Button
+                            variant="outline"
                             className="cursor-pointer"
                         >
                             <MessageCircle />Chat
@@ -123,7 +115,7 @@ export default function WorkspaceDetailPage() {
                 </ButtonGroup>
             </div>
             <div className="flex items-center justify-center">
-                <div 
+                <div
                     ref={scrollContainerRef}
                     className="w-full p-4 border rounded-2xl shadow shadow-inherit overflow-y-auto max-h-[70vh] bg-card"
                 >
@@ -131,11 +123,12 @@ export default function WorkspaceDetailPage() {
                         <>
                             {workspaceItems.map((item) => (
                                 <div key={item.id}>
-                                    <Link href={`/workspaces/${item.workspace_id}/chat/${item.id}`}>
+
+                                    <Link href={`/workspaces/${item.workspace_id}/${item.type}/${item.id}`}>
                                         <Card className="bg-muted/40 hover:bg-accent transition-colors cursor-pointer mt-2">
                                             <CardContent className="flex items-center justify-between">
                                                 <div>
-                                                    <CardTitle>{item.title}</CardTitle>
+                                                    <CardTitle>{item.title.length > 100 ? item.title.slice(0, 100) + '...' : item.title}</CardTitle>
                                                     <div className="flex text-xs text-muted-foreground items-center">
                                                         <Dot />
                                                         <span>{item.created_at}</span>
@@ -146,7 +139,7 @@ export default function WorkspaceDetailPage() {
                                     </Link>
                                 </div>
                             ))}
-                            
+
                             {/* Load more trigger */}
                             <div ref={loadMoreRef} className="py-4">
                                 {loading && (

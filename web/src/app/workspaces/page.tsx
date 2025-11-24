@@ -10,6 +10,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { NewWorkspaceDialog } from '@/components/new-workspace-dialog';
 import { useDeleteWorkspace } from '@/hooks/use-chat';
 import { NewChatDialog } from '@/components/new-chat-dialog';
+import { NewDeskDialog } from '@/components/new-desk-dialog';
 
 const MAX_RENDERED_ITEMS = 50; // Only keep 50 items in DOM at once
 
@@ -17,6 +18,7 @@ export default function WorkspacePage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [openNewChatWindow, setOpenNewChatWindow] = useState<boolean>(false);
   const [openNewWorkspaceWindow, setOpenNewWorkspaceWindow] = useState<boolean>(false);
+  const [openNewDeskWindow, setOpenNewDeskWindow] = useState<boolean>(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -31,11 +33,11 @@ export default function WorkspacePage() {
 
   const loadWorkspaces = async (pageNum: number, reset: boolean = false) => {
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const res = await getWorkspaces(pageNum, 10);
-      
+
       if (reset) {
         setWorkspaces(res.items);
       } else {
@@ -49,7 +51,7 @@ export default function WorkspacePage() {
           return newItems;
         });
       }
-      
+
       // Check if there are more items to load
       setHasMore(res.items.length === 10 && res.total > pageNum * 10);
       setPage(pageNum);
@@ -95,14 +97,13 @@ export default function WorkspacePage() {
       <div className="mb-4 flex items-center justify-end">
         <ButtonGroup className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setOpenNewWorkspaceWindow(true)} variant="outline" className="cursor-pointer"><Plus /> New Workspace</Button>
-          <Link href={'/deep-research'}><Button variant="outline" className="cursor-pointer"><Microscope /> Deep Research</Button></Link>
-          <Link href={'/research-desk'}><Button variant="outline" className="cursor-pointer"><File />Research Desk</Button></Link>
+          <Button onClick={() => setOpenNewDeskWindow(true)} variant="outline" className="cursor-pointer"><File />Research Desk</Button>
           <div><Button onClick={() => setOpenNewChatWindow(true)} variant="outline" className="cursor-pointer"><MessageCircle />Chat</Button></div>
           <Link href={'/chat?tool=search'}><Button variant="outline" className="cursor-pointer"><Search />Search</Button></Link>
         </ButtonGroup>
       </div>
       <div className="flex items-center justify-center">
-        <div 
+        <div
           ref={scrollContainerRef}
           className="w-full p-4 border rounded-2xl shadow shadow-inherit overflow-y-auto max-h-[70vh] bg-card"
         >
@@ -135,7 +136,7 @@ export default function WorkspacePage() {
                   </Link>
                 </div>
               ))}
-              
+
               {/* Load more trigger */}
               <div ref={loadMoreRef} className="py-4">
                 {loading && (
@@ -174,6 +175,11 @@ export default function WorkspacePage() {
       <NewChatDialog
         open={openNewChatWindow}
         onOpenChange={setOpenNewChatWindow}
+        workspaces={workspaces}
+      />
+      <NewDeskDialog
+        open={openNewDeskWindow}
+        onOpenChange={setOpenNewDeskWindow}
         workspaces={workspaces}
       />
     </main>

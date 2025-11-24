@@ -1,5 +1,5 @@
 "use client";
-import ChatInput from '@/components/chat-input'
+import ContextInput from '@/components/context-input';
 import { useWorkspace } from '@/hooks/use-chat';
 import { useCreateDesk } from '@/hooks/use-desk';
 import { Bot, Loader2 } from 'lucide-react'
@@ -18,8 +18,7 @@ export default function ResearchDesk() {
   const handleSubmit = async (data: {
     prompt: string;
     model: string;
-    search: boolean;
-    agent: string;
+    research_scope: string;
     files: File[];
   }) => {
     if (!data.prompt.trim()) return;
@@ -29,9 +28,7 @@ export default function ResearchDesk() {
       // Create chat (backend handles title)
       const result = await createDesk.mutateAsync({});
       router.push(
-        `/workspaces/${workspaceId}/chat/${result._id}?prompt=${encodeURIComponent(
-          data.prompt
-        )}`
+        `/workspaces/${workspaceId}/desk/${result._id}?prompt=${encodeURIComponent(data.prompt)}&model=${encodeURIComponent(data.model)}&scope=${data.research_scope}`
       );
     } catch (error) {
       console.error("Failed to create chat:", error);
@@ -68,7 +65,7 @@ export default function ResearchDesk() {
       {/* Chat Input at bottom */}
       <div className="sticky bottom-0 left-0 right-0 w-full border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-3xl mx-auto p-4">
-          <ChatInput onSubmit={handleSubmit} disabled={isCreating || createDesk.isPending} />
+          <ContextInput onSubmit={handleSubmit} disabled={isCreating || createDesk.isPending} />
         </div>
       </div>
     </div>

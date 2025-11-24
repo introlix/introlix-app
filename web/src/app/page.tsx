@@ -1,5 +1,6 @@
 "use client";
 import { NewChatDialog } from "@/components/new-chat-dialog";
+import { NewDeskDialog } from "@/components/new-desk-dialog";
 import { NewWorkspaceDialog } from "@/components/new-workspace-dialog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -17,6 +18,7 @@ export default function Home() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [openNewChatWindow, setOpenNewChatWindow] = useState<boolean>(false);
   const [openNewWorkspaceWindow, setOpenNewWorkspaceWindow] = useState<boolean>(false);
+  const [openNewDeskWindow, setOpenNewDeskWindow] = useState<boolean>(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -39,11 +41,11 @@ export default function Home() {
 
   const loadWorkspaces = async (pageNum: number, reset: boolean = false) => {
     if (loading) return;
-    
+
     setLoading(true);
     try {
       const res = await getWorkspaces(pageNum, 10);
-      
+
       if (reset) {
         setWorkspaces(res.items);
         isInitialLoad.current = false;
@@ -57,7 +59,7 @@ export default function Home() {
           return newItems;
         });
       }
-      
+
       // Check if there are more items to load
       const stillHasMore = res.items.length === 10 && res.total > pageNum * 10;
       setHasMore(stillHasMore);
@@ -177,17 +179,9 @@ export default function Home() {
             <Plus className="mr-2" /> New Workspace
           </Button>
 
-          <Link href={"/deep-research"}>
-            <Button variant="outline" className="cursor-pointer">
-              <Microscope className="mr-2" /> Deep Research
-            </Button>
-          </Link>
-
-          <Link href={"/research-desk"}>
-            <Button variant="outline" className="cursor-pointer">
-              <File className="mr-2" /> Research Desk
-            </Button>
-          </Link>
+          <Button onClick={() => setOpenNewDeskWindow(true)} variant="outline" className="cursor-pointer">
+            <File className="mr-2" /> Research Desk
+          </Button>
 
           <Button
             onClick={() => setOpenNewChatWindow(true)}
@@ -215,6 +209,11 @@ export default function Home() {
         open={openNewWorkspaceWindow}
         onOpenChange={setOpenNewWorkspaceWindow}
         onWorkspaceCreated={handleWorkspaceCreated}
+      />
+      <NewDeskDialog
+        open={openNewDeskWindow}
+        onOpenChange={setOpenNewDeskWindow}
+        workspaces={workspaces}
       />
     </main>
   );

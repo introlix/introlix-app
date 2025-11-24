@@ -1,4 +1,4 @@
-import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem, ResearchDesk, CreateResearchDeskRequest, ResearchDeskContextAgentRequest } from "./types";
+import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem, ResearchDesk, CreateResearchDeskRequest, ResearchDeskContextAgentRequest, ContextAgentStep } from "./types";
 
 const BASE_URL = "http://localhost:8000";
 
@@ -21,7 +21,7 @@ export async function createWorkspace(data: Workspace): Promise<{ workspace: Wor
 }
 
 // Get all workspaces items
-export async function getAllWorkspacesItems(page=1, limit=10): Promise<PaginatedResponse<WorkspaceItem>> {
+export async function getAllWorkspacesItems(page = 1, limit = 10): Promise<PaginatedResponse<WorkspaceItem>> {
   const res = await fetch(`${BASE_URL}/workspaces/items?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error("Failed to fetch all workspaces items");
   return res.json();
@@ -138,7 +138,7 @@ export const researchDeskApi = {
   },
 
   // Setup a context agent
-  async setupContextAgent(workspaceId: string, deskId: string, data: ResearchDeskContextAgentRequest): Promise<{ message: string }> {
+  async setupContextAgent(workspaceId: string, deskId: string, data: ResearchDeskContextAgentRequest): Promise<ContextAgentStep> {
     const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/context-agent`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -150,10 +150,10 @@ export const researchDeskApi = {
 
   // Setup a planner agent
   async setupPlannerAgent(workspaceId: string, deskId: string, model: string): Promise<{ message: string }> {
-    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/planner-agent`, {
+    const uri = new URL(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/planner-agent`)
+    uri.searchParams.set('model', model)
+    const res = await fetch(uri, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
     });
     if (!res.ok) throw new Error("Failed to setup planner agent");
     return res.json();
@@ -164,18 +164,21 @@ export const researchDeskApi = {
     const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/planner-agent/edit`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plans }),
+      body: JSON.stringify(plans),
     });
-    if (!res.ok) throw new Error("Failed to edit plans");
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Failed to edit plans: ${res.status} ${err}`);
+    }
     return res.json();
   },
 
   // Setup explorer agent
   async setupExplorerAgent(workspaceId: string, deskId: string, model: string): Promise<{ message: string }> {
-    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/explorer-agent`, {
+    const uri = new URL(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/setup/explorer-agent`);
+    uri.searchParams.set('model', model)
+    const res = await fetch(uri, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
     });
     if (!res.ok) throw new Error("Failed to setup explorer agent");
     return res.json();
@@ -196,9 +199,62 @@ export const researchDeskApi = {
     return res.json();
   },
 
+  // Edit document using AI agent
+  async editDocument(
+    workspaceId: string,
+    deskId: string,
+    data: { prompt: string; model: string }
+  ): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/edit-doc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Failed to edit document: ${res.status} ${err}`);
+    }
+    return res.json();
+  },
+
+  // Streaming chat - Chat with assistant
+  async *chat(
+    workspaceId: string,
+    deskId: string,
+    data: { prompt: string, model: string }
+  ): AsyncGenerator<string, void, unknown> {
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        yield chunk;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
+
+
   // Get a research desk by id
   async getById(workspaceId: string, deskId: string): Promise<ResearchDesk> {
-    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}/docs`);
+    const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/${deskId}`);
     if (!res.ok) throw new Error('Research Desk not found');
     return res.json();
   }

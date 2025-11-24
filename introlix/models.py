@@ -67,6 +67,10 @@ class ResearchDeskContextAgentRequest(BaseModel):
     research_scope: str
     user_files: Optional[List] = None
 
+class EditDocRequest(BaseModel):
+    prompt: str
+    model: str
+
 class ResearchDesk(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
     workspace_id: Optional[str] = None
@@ -75,5 +79,6 @@ class ResearchDesk(BaseModel):
     documents: Optional[dict] = None
     context_agent: Optional[ContextAgent] = None
     planner_agent: Optional[dict] = None
+    messages: List[Message] = Field(default_factory=list) # chat messages
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

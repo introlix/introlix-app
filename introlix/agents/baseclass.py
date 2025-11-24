@@ -148,8 +148,10 @@ class BaseAgent(ABC):
         else:
             output = response.json()
             try:
+                print("Output from try", output["choices"][0]["message"]["content"])
                 return output["choices"][0]["message"]["content"]
             except:
+                print("Output from except", output)
                 return output
 
     async def _parse_output(self, raw_output: str) -> Any:

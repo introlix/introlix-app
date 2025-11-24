@@ -201,6 +201,8 @@ class ContextAgent(BaseAgent):
         }}
         }}
         ```
+
+        NOTE: AT ANY COST DO NOT GIVE OUTPUT OUTSIDE OF THE JSON FORMAT AS I HAVE GIVEN YOU. ALWAYS MAKE SURE TO PRODUCE SAME FORMAT JSON. AND ALSO DO NOT REPEAT ANY QUESTIONS.
         """
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
@@ -287,6 +289,7 @@ class ContextAgent(BaseAgent):
 
     async def _parse_output(self, raw_output: str) -> Any:
         """Parse LLM output and validate structure."""
+        print("Raw ouput", raw_output)
         
         # Strip markdown code fences if present
         cleaned_output = raw_output.strip()
@@ -343,6 +346,7 @@ class ContextAgent(BaseAgent):
             cleaned_output = "\n".join(lines).strip()
             
             try:
+                print("Cleaned output is", cleaned_output)
                 parsed_output = json.loads(cleaned_output)
                 if parsed_output.get("type") == "final" and "answer" in parsed_output:
                     answer = parsed_output["answer"]

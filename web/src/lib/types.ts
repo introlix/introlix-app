@@ -62,13 +62,20 @@ export interface CreateResearchDeskRequest {
 }
 
 export interface ContextAgent {
-  id: string | null;
-  conv_history: string;
-  questions: Array<string>;
-  move_next: boolean;
-  confidence_level: number;
-  final_prompt: string;
-  research_parameters: object;
+  id?: string | null;
+  conv_history?: unknown;
+  questions?: Array<string>;
+  move_next?: boolean;
+  confidence_level?: number;
+  final_prompt?: string;
+  research_parameters?: Record<string, unknown> | null;
+}
+
+interface TopicData {
+  topic: string;
+  priority: string;
+  estimated_sources_needed: number;
+  keywords: string[];
 }
 
 export interface ResearchDesk {
@@ -77,8 +84,9 @@ export interface ResearchDesk {
   state?: string;
   title?: string;
   documents?: object;
-  context_agent: ContextAgent;
-  planner_agent?: object;
+  context_agent?: ContextAgent | null;
+  planner_agent?: { topics: TopicData[] } | null;
+  messages?: Message[];
   created_at: string;
   updated_at: string;
 }
@@ -86,7 +94,16 @@ export interface ResearchDesk {
 export interface ResearchDeskContextAgentRequest {
   prompt: string;
   model: string;
-  answers?: Array<string>;
-  research_scope: string;
+  answers?: string;
+  research_scope: "narrow" | "medium" | "comprehensive";
   user_files?: Array<object>;
+}
+
+export interface ContextAgentStep {
+  questions: string[];
+  move_next: boolean;
+  confidence_level: number;
+  final_prompt: string | null;
+  research_parameters: Record<string, unknown> | null;
+  state: string;
 }

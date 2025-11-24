@@ -34,45 +34,51 @@ class AgentDecision(BaseModel):
 
 
 INSTRUCTION = """
-You are Introlix Chat a part of Introlix Research OS. You task is to chat with user and answer to users query.
-You have access to internet search using search tool. You have access to mutliple tools:
-{tools}
+You are Introlix Edit Agent, a specialized AI for editing and writing documents.
+Your task is to modify the provided document content based on the user's instructions.
+You have access to internet search using the search tool if you need to verify facts or gather new information to include in the document.
+
+You will be provided with:
+1. The current content of the document (labeled as CURRENT_CONTENT).
+2. The user's request/instruction (labeled as USER_INSTRUCTION).
+
+Your goal is to produce the NEW_CONTENT of the document.
 
 Decision format (respond in JSON):
 {{
     "type": "tool" | "final",
     "thought": "your reasoning",
     "tool_calls": [{{"name": "tool_name", "input": {{...}}}}],  // if type is "tool"
-    "answer": "your answer",  // if type is "final"
+    "answer": "the fully edited document content",  // if type is "final". THIS MUST BE THE FULL DOCUMENT CONTENT, NOT JUST A SNIPPET.
     "needs_more_info": true/false  // whether you need another iteration
 }}
 
 Guidelines:
-1. Always use search tool when you needs to get latest information or you don't know the answer.
-2. Don't make a fake or dummy data when you don't know. If a user asks anything that you don't know or you need more information then you again you search tool.
-3. If you already know the answer, set type="final" immediately
-4. If tool results are sufficient, set needs_more_info=false
-5. Always incldue search source at the end of the answer.
-6. Don't add any tokens like <｜begin▁of▁sentence｜> or other extra tokens that user don't needs to see
+1. If the user asks to rewrite, summarize, or expand, do so while maintaining the document's tone unless asked otherwise.
+2. If you need external information to fulfill the request (e.g., "Add a section about the latest GDP figures"), use the search tool.
+3. When you are ready to provide the edited document, set type="final" and put the COMPLETE edited text in the "answer" field.
+4. Do NOT output conversational text in the "answer" field (like "Here is the edited text"). ONLY output the document content itself.
+5. If the user request is a question about the document that doesn't require editing, you should still "edit" it by returning the original content (maybe with a note? No, the user said "instead of answering questions it can edit documents"). Actually, if the user asks a question, maybe they want the answer inserted? Assume the user wants the document modified.
+6. Always return the FULL document content in the final answer, even if only a small part changed.
 
 Examples:
 
-User: "What is the capital of France?"
-Response: {{"type": "final", "thought": "I know this", "answer": "The capital of France is Paris."}}
+User Instruction: "Fix the typo in the first sentence."
+CURRENT_CONTENT: "Thsi is a test."
+Response: {{"type": "final", "thought": "Fixing typo 'Thsi' to 'This'", "answer": "This is a test."}}
 
-User: "Compare GPT-5 and Gemini 2.5"
-Response: {{"type": "tool", "thought": "Need to search both", "tool_calls": [{{"name": "search", "input": {{"queries": ["GPT-5 features", "Gemini 2.5 features"]}}}}], "needs_more_info": false}}
-
-User: "What's the weather in Paris?"
-Response: {{"type": "tool", "thought": "Need current weather data", "tool_calls": [{{"name": "search", "input": {{"queries": ["weather in Paris today"]}}}}], "needs_more_info": false}}
+User Instruction: "Add a paragraph about cats."
+CURRENT_CONTENT: "Dogs are great."
+Response: {{"type": "tool", "thought": "I can write about cats without search, or search if needed. I'll just write it.", "answer": "Dogs are great.\n\nCats are also popular pets, known for their independence and agility."}}
 """
 
 
-class ChatAgent(BaseAgent):
+class EditAgent(BaseAgent):
     def __init__(
         self,
         unique_id: str,
         model: str,
+        current_content: str,
         config: Optional[AgentInput] = None,
         max_iterations=5,
         conversation_history: Optional[List[Dict]] = None,
@@ -80,13 +86,14 @@ class ChatAgent(BaseAgent):
 
         if config is None:
             config = AgentInput(
-                name="ChatAgent",
-                description="An intelligent agent that can search and reason",
+                name="EditAgent",
+                description="An intelligent agent that can edit documents",
                 tools=self._create_tools(),
             )
         super().__init__(model, config, max_iterations)
 
         self.unique_id = unique_id
+        self.current_content = current_content
         self.tools = [{"name": "search", "description": "Search on internet."}]
 
         self.sys_prompt = INSTRUCTION.format(tools=self.tools)
@@ -160,17 +167,14 @@ class ChatAgent(BaseAgent):
             {"role": "system", "content": self.sys_prompt}
         ]
         
-        # Add conversation history (last 10 messages to manage tokens)
-        recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
-        
-        for msg in recent_history:
-            role = msg.get("role")
-            content = msg.get("content")
-            if role in ["user", "assistant"] and content:
-                messages.append({"role": role, "content": content})
+        # We don't necessarily need conversation history for editing, but maybe previous edits?
+        # For now, let's stick to the current request context.
         
         # Build current user prompt with tool results if any
-        current_prompt_parts = [f"User Query: {user_prompt}"]
+        current_prompt_parts = [
+            f"CURRENT_CONTENT:\n{self.current_content}\n",
+            f"USER_INSTRUCTION: {user_prompt}"
+        ]
         
         if state.get("tool_results"):
             current_prompt_parts.append("\nTool Results:")
@@ -220,16 +224,17 @@ class ChatAgent(BaseAgent):
                 return output
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
-        """Legacy method - not used in arun anymore"""
         pass
 
-    async def arun(self, user_prompt: str) -> AsyncGenerator[str, None]:
+    async def run(self, user_prompt: str) -> str:
+        """
+        Run the agent and return the edited content.
+        Note: This overrides the generator-based arun from ChatAgent/BaseAgent to return a single string.
+        """
         state = {"history": [], "tool_results": {}}
 
         for iteration in range(self.max_iterations):
             messages = self._build_messages_array(user_prompt, state)
-
-            yield f"\n🤔 **Thinking** (Iteration {iteration + 1})...\n"
 
             # Call LLM (non-streaming for decision)
             raw_output = await self._call_llm_with_messages(messages=messages, stream=False)
@@ -238,14 +243,14 @@ class ChatAgent(BaseAgent):
                 # Cleaning the raw_output
                 raw_output = raw_output.strip()
 
-                if '<｜begin▁of▁sentence｜>' in raw_output:
-                    raw_output = raw_output.replace('<｜begin▁of▁sentence｜>', '')
+                if '<｜begin of sentence｜>' in raw_output:
+                    raw_output = raw_output.replace('<｜begin of sentence｜>', '')
 
-                if '<｜end▁of▁sentence｜>' in raw_output:
-                    raw_output = raw_output.replace('<｜end▁of▁sentence｜>', '')
+                if '<｜end of sentence｜>' in raw_output:
+                    raw_output = raw_output.replace('<｜end of sentence｜>', '')
 
                 # Remove any trailing special characters
-                raw_output = raw_output.strip().rstrip('<｜').rstrip('▁')
+                raw_output = raw_output.strip().rstrip('<｜').rstrip(' ')
 
                 # Extract JSON from markdown if present
                 if "```json" in raw_output:
@@ -268,88 +273,32 @@ class ChatAgent(BaseAgent):
                     decision_dict = json.loads(raw_output)
                     decision = AgentDecision(**decision_dict)
                 except:
-                    yield f"\n{raw_output}"
-                    yield f"\n❌ **Error**: Could not parse decision\n"
-                    break
-
-            # Show thought process
-            if decision.thought:
-                yield f"*{decision.thought}*"
+                    print(f"Error parsing decision: {raw_output}")
+                    continue
 
             # Handle decision type
             if decision.type == "final":
-                yield f"\n**Answer**:\n{decision.answer}\n"
-                break
+                return decision.answer
 
             elif decision.type == "tool" and decision.tool_calls:
-                yield f"\n**Using tools**: {[tc.name for tc in decision.tool_calls]}\n"
                 for tc in decision.tool_calls:
                     tool = next(
                         (t for t in self.config.tools if t.name == tc.name), None
                     )
                     if not tool:
-                        yield f"  ❌ Tool {tc.name} not found\n"
+                        state["tool_results"][tc.name] = f"Tool {tc.name} not found"
                         continue
 
                     try:
                         result = await tool.execute(tc.input)
                         state["tool_results"][tc.name] = result
-                        yield f"  ✓ {tc.name} completed\n"
                     except Exception as e:
                         error_msg = f"Error: {str(e)}"
                         state["tool_results"][tc.name] = error_msg
-                        yield f"  ❌ {tc.name} failed: {error_msg}\n"
 
-            # If no more information needed
-            if not decision.needs_more_info:
-                # Phase 3: Generate final answer with streaming
-                yield f"\n**Generating answer**...\n\n"
-
-                final_messages = [
-                    {
-                        "role": "system", 
-                        "content": "You are a helpful AI assistant. Provide a clear, comprehensive answer based on the search results and conversation context. In the end of answer always include source if the data is from search. If no source is given then don't give source at the end."
-                    }
-                ]
-                # Add conversation history
-                recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
-                for msg in recent_history:
-                    role = msg.get("role")
-                    content = msg.get("content")
-                    if role in ["user", "assistant"] and content:
-                        final_messages.append({"role": role, "content": content})
-                
-                # Add current query and tool results
-                final_prompt_parts = [f"User asked: {user_prompt}\n"]
-                final_prompt_parts.append("\nTool Results:")
-                for tool_name, result in state["tool_results"].items():
-                    final_prompt_parts.append(f"\nOutput From {tool_name} Tool: {result}")
-                
-                final_prompt_parts.append(
-                    "\n\nProvide a comprehensive answer to the user's question based on these search results and conversation history."
-                )
-                
-                final_messages.append({
-                    "role": "user",
-                    "content": "\n".join(final_prompt_parts)
-                })
-
-                # Stream the final response
-                response_stream = await self._call_llm_with_messages(final_messages, stream=True)
-
-                async for chunk in response_stream:
-                    yield chunk
-
-                break
-
-
-async def main():
-    agent = ChatAgent(unique_id="user1", model="moonshotai/kimi-k2:free")
-
-    async for chunk in agent.arun("PM of Nepal"):
-        print(chunk, end="", flush=True)
-
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+            # If no more information needed but not final? Should not happen if logic is correct.
+            if not decision.needs_more_info and decision.type != "final":
+                 # Force final answer generation if it gets stuck?
+                 pass
+        
+        return self.current_content # Fallback to original if failed

@@ -88,10 +88,10 @@ function ExportDialog({ onClose }: ExportDialogProps) {
 
     const handleSelectFormat = (formatKey: string) => {
         editor.read(() => {
-            const content = formatKey === 'md' 
+            const content = formatKey === 'md'
                 ? $convertToMarkdownString(TRANSFORMERS)
                 : $getRoot().getTextContent();
-            
+
             const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -204,9 +204,8 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
             onClick={onClick}
             type="button"
             title={title}
-            className={`inline-flex items-center justify-center h-8 px-2.5 rounded text-sm font-medium transition-colors ${
-                active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50 text-muted-foreground hover:text-foreground'
-            }`}
+            className={`inline-flex items-center justify-center h-8 px-2.5 rounded text-sm font-medium transition-colors ${active ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50 text-muted-foreground hover:text-foreground'
+                }`}
         >
             {children}
         </button>
@@ -343,7 +342,7 @@ function LoadContentPlugin({ content, deskId }: { content?: string; deskId: stri
         editor.update(() => {
             const root = $getRoot();
             root.clear();
-            
+
             try {
                 $convertFromMarkdownString(content, TRANSFORMERS);
             } catch (err) {

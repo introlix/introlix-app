@@ -86,7 +86,7 @@ export function AppSidebar() {
                                 <SidebarMenuItem key={item.id}>
                                     <Link href={`/workspaces/${item.workspace_id}/${item.type}/${item.id}`}>
                                         <SidebarMenuButton asChild tooltip={item.title || "Untitled"} className="cursor-pointer">
-                                            <span className="group-data-[collapsible=icon]:hidden">{item.title || "Untitled"}</span>
+                                            <span className="group-data-[collapsible=icon]:hidden">{item.title.length > 30 ? item.title.slice(0, 30) + "..." : item.title || "Untitled"}</span>
                                         </SidebarMenuButton>
                                     </Link>
                                 </SidebarMenuItem>
