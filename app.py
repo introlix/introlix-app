@@ -9,7 +9,7 @@ from introlix.routes.research_desk import research_desk_router
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import DESCENDING
 
-app = FastAPI(title="Introlix OS", openapi_prefix="/api/v1")
+app = FastAPI(title="Introlix", openapi_prefix="/api/v1")
 pc = Pinecone(api_key=PINECONE_KEY)
 
 app.add_middleware(

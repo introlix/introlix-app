@@ -1,16 +1,41 @@
+/**
+ * API Client Module
+ * 
+ * This module provides a centralized API client for interacting with the backend server.
+ * It includes functions for managing workspaces, chats, and research desks.
+ * 
+ * Features:
+ * - Workspace CRUD operations
+ * - Chat creation and streaming messages
+ * - Research desk workflow management
+ * - Type-safe API calls with TypeScript
+ * - Streaming support for real-time responses
+ * 
+ * Base URL: http://localhost:8000
+ */
+
 import { Workspace, PaginatedResponse, Chat, CreateChatRequest, SendMessageRequest, WorkspaceItem, ResearchDesk, CreateResearchDeskRequest, ResearchDeskContextAgentRequest, ContextAgentStep } from "./types";
 
 const BASE_URL = "http://localhost:8000";
 
 // -------------------- WORKSPACES --------------------
 
-// Get all workspaces
+/**
+ * Get all workspaces with pagination
+ * @param page - Page number (default: 1)
+ * @param limit - Number of items per page (default: 10)
+ * @returns Paginated list of workspaces
+ */
 export async function getWorkspaces(page = 1, limit = 10): Promise<PaginatedResponse<Workspace>> {
   const res = await fetch(`${BASE_URL}/workspaces?page=${page}&limit=${limit}`);
   return res.json();
 }
 
-// Create a new workspace
+/**
+ * Create a new workspace
+ * @param data - Workspace data
+ * @returns Created workspace object
+ */
 export async function createWorkspace(data: Workspace): Promise<{ workspace: Workspace }> {
   const res = await fetch(`${BASE_URL}/workspaces`, {
     method: "POST",
@@ -20,35 +45,70 @@ export async function createWorkspace(data: Workspace): Promise<{ workspace: Wor
   return res.json();
 }
 
-// Get all workspaces items
+/**
+ * Get all workspace items across all workspaces
+ * @param page - Page number (default: 1)
+ * @param limit - Number of items per page (default: 10)
+ * @returns Paginated list of workspace items
+ * @throws Error if fetch fails
+ */
 export async function getAllWorkspacesItems(page = 1, limit = 10): Promise<PaginatedResponse<WorkspaceItem>> {
   const res = await fetch(`${BASE_URL}/workspaces/items?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error("Failed to fetch all workspaces items");
   return res.json();
 }
 
-// Get a workspace by id
+/**
+ * Get a specific workspace by ID
+ * @param id - Workspace ID
+ * @returns Workspace object
+ */
 export async function getWorkspace(id: string): Promise<Workspace> {
   const res = await fetch(`${BASE_URL}/workspaces/${id}`);
   return res.json();
 }
 
-// Delete a workspace
+/**
+ * Delete a workspace
+ * @param id - Workspace ID to delete
+ * @returns Success message
+ * @throws Error if deletion fails
+ */
 export async function deleteWorkspace(id: string): Promise<{ message: string }> {
   const res = await fetch(`${BASE_URL}/workspaces/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete workspace");
   return res.json();
 }
 
-// Get all workspace items
+/**
+ * Get all items within a specific workspace
+ * @param workspaceId - Workspace ID
+ * @param page - Page number (default: 1)
+ * @param limit - Number of items per page (default: 10)
+ * @returns Paginated list of workspace items
+ * @throws Error if fetch fails
+ */
 export async function getWorkspaceItems(workspaceId: string, page = 1, limit = 10): Promise<PaginatedResponse<WorkspaceItem>> {
   const res = await fetch(`${BASE_URL}/workspaces/${workspaceId}/items?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error("Failed to fetch workspace items");
   return res.json();
 }
+
 // -------------------- CHAT API --------------------
+/**
+ * Chat API
+ * 
+ * Provides methods for managing chat conversations including creation,
+ * retrieval, deletion, and streaming message sending.
+ */
 export const chatApi = {
-  // Create a new chat
+  /**
+   * Create a new chat in a workspace
+   * @param workspaceId - Workspace ID
+   * @param data - Chat creation data
+   * @returns Created chat ID and success message
+   * @throws Error if creation fails
+   */
   async create(
     workspaceId: string,
     data: CreateChatRequest
@@ -62,14 +122,24 @@ export const chatApi = {
     return res.json();
   },
 
-  // Get a chat by id
+  /**
+   * Get a chat by ID
+   * @param chatId - Chat ID
+   * @returns Chat object with messages
+   * @throws Error if chat not found
+   */
   async getById(chatId: string): Promise<Chat> {
     const res = await fetch(`${BASE_URL}/workspace/placeholder/chat/${chatId}/`);
     if (!res.ok) throw new Error('Chat not found');
     return res.json();
   },
 
-  // Delete a chat
+  /**
+   * Delete a chat
+   * @param chatId - Chat ID to delete
+   * @returns Success message
+   * @throws Error if deletion fails
+   */
   async delete(chatId: string): Promise<{ message: string }> {
     const res = await fetch(`${BASE_URL}/workspace/placeholder/chat/${chatId}/`, {
       method: 'DELETE',
@@ -78,7 +148,14 @@ export const chatApi = {
     return res.json();
   },
 
-  // Streaming chat - returns an async generator
+  /**
+   * Send a message and receive streaming response
+   * @param workspaceId - Workspace ID
+   * @param chatId - Chat ID
+   * @param data - Message data (prompt, model, search flag)
+   * @yields Streamed response chunks
+   * @throws Error if request fails
+   */
   async *sendMessage(
     workspaceId: string,
     chatId: string,
@@ -113,9 +190,22 @@ export const chatApi = {
   },
 };
 
+
 // -------------------- RESEARCH DESK API --------------------
+/**
+ * Research Desk API
+ * 
+ * Provides methods for managing research desk workflows including creation,
+ * setup, context gathering, planning, exploration, and document management.
+ */
 export const researchDeskApi = {
-  // Create a new research desk
+  /**
+   * Create a new research desk
+   * @param workspaceId - Workspace ID
+   * @param data - Research desk creation data
+   * @returns Created desk ID and success message
+   * @throws Error if creation fails
+   */
   async create(workspaceId: string, data: CreateResearchDeskRequest): Promise<{ message: string; _id: string }> {
     const res = await fetch(`${BASE_URL}/workspace/${workspaceId}/research-desk/new`, {
       method: "POST",

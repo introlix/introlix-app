@@ -1,11 +1,42 @@
 """
-Research Desk API endpoints for managing research workflows.
+Research Desk Routes Module
 
-This module handles the lifecycle of research desks including:
-- Creation and setup
-- Context gathering via AI agents
-- Research planning
-- Document management
+This module provides REST API endpoints for managing research desk workflows within workspaces.
+Research desks guide users through a multi-stage research process using AI agents.
+
+Workflow Stages:
+----------------
+1. **initial** - Desk created, awaiting setup
+2. **context_agent** - Gathering context and clarifying research scope
+3. **planner_agent** - Creating research plan with topics and keywords
+4. **approve_plan** - User review and approval of research plan
+5. **explorer_agent** - Searching internet and gathering information
+6. **complete** - Research data collected, ready for document creation
+
+Endpoints:
+----------
+- POST /new - Create a new research desk
+- PATCH /{desk_id}/setup - Initialize desk with title generation
+- PATCH /{desk_id}/setup/context-agent - Gather context via AI agent
+- PATCH /{desk_id}/setup/planner-agent - Generate research plan
+- PATCH /{desk_id}/setup/planner-agent/edit - Edit/approve research plan
+- PATCH /{desk_id}/setup/explorer-agent - Execute internet search
+- PATCH /{desk_id}/docs - Add/update documents
+- POST /{desk_id}/edit-doc - Edit document using AI
+- POST /{desk_id}/chat - Chat about the research/document
+- GET / - List all research desks in workspace
+- GET /{desk_id} - Get specific research desk details
+
+Features:
+---------
+- Multi-stage AI-guided research workflow
+- Automatic title generation
+- Context gathering with clarifying questions
+- Research planning with topics and keywords
+- Internet search integration
+- Document editing with AI assistance
+- Chat interface for Q&A about research
+- Conversation history persistence
 """
 import json
 from datetime import datetime
@@ -658,6 +689,45 @@ async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest
 
 @research_desk_router.post('/{desk_id}/chat')
 async def chat(workspace_id: str, desk_id: str, request: ResearchDeskRequest):
+    """
+    Chat with AI about the research desk content.
+
+    This endpoint provides an interactive chat interface where users can ask questions
+    about their research desk and its documents. The AI has access to the document
+    content and can provide informed responses.
+
+    Workflow:
+    1. Validates workspace and research desk
+    2. Loads conversation history
+    3. Includes document content in context if available
+    4. Saves user message to database
+    5. Streams AI response back to client
+    6. Saves assistant response to database
+
+    Args:
+        workspace_id (str): The unique identifier of the workspace.
+        desk_id (str): The unique identifier of the research desk.
+        request (ResearchDeskRequest): The chat request containing:
+            - prompt (str): The user's question/message
+            - model (str): The model to use ("auto" or specific model name)
+
+    Returns:
+        StreamingResponse: A streaming response containing the AI's reply in real-time.
+
+    Raises:
+        HTTPException: 404 if workspace or research desk is not found.
+
+    Features:
+        - Document-aware responses (AI has access to desk documents)
+        - Conversation history persistence
+        - Real-time streaming responses
+        - Automatic model selection when "auto" is specified
+
+    Example:
+        POST /workspace/123/research-desk/abc/chat
+        Body: {"prompt": "Summarize the key findings", "model": "auto"}
+        Response: Streaming text response from the AI
+    """
     # Validate workspace
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
     if not workspace:

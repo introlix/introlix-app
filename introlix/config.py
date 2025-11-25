@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # KEYS
-OPEN_ROUTER_KEY = os.environ["OPEN_ROUTER_KEY"]
+OPEN_ROUTER_KEY = os.environ.get("OPEN_ROUTER_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SEARCHXNG_HOST = os.environ["SEARCHXNG_HOST"]
 PINECONE_KEY = os.environ["PINECONE_KEY"]

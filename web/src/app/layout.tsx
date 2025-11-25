@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Introlix OS",
-  description: "Introlix OS is an AI powered research platform with many smart features.",
+  title: "Introlix",
+  description: "Introlix is an AI powered research platform with many smart features.",
 };
 
 export default function RootLayout({

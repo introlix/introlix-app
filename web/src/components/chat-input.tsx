@@ -15,6 +15,9 @@ import {
 type ModelType = "auto" | "gpt-5" | "claude-sonnet-4" | "deepseek/deepseek-v3.2-exp" | "google/gemini-2.5-pro";
 type AgentType = "verifier" | "knowledge-gap" | "research-assistant" | "code-reviewer" | null;
 
+/**
+ * Chat input component with model selection, file upload, and search toggle
+ */
 interface ChatInputProps {
   onSubmit: (data: {
     prompt: string;

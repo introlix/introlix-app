@@ -74,7 +74,9 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { useDesk, useAddDocumentToDesk } from '@/hooks/use-desk';
 import { Message } from '@/lib/types';
 
-// --- EXPORT DIALOG ---
+/**
+ * Export dialog for downloading document in different formats
+ */
 interface ExportDialogProps {
     onClose: () => void;
 }
@@ -132,7 +134,6 @@ function ExportDialog({ onClose }: ExportDialogProps) {
     );
 }
 
-// --- TOOLBAR PLUGIN ---
 interface ToolbarButtonProps {
     onClick: React.MouseEventHandler<HTMLButtonElement>;
     active?: boolean;
@@ -140,6 +141,9 @@ interface ToolbarButtonProps {
     children: ReactNode;
 }
 
+/**
+ * Toolbar plugin with formatting controls and export functionality
+ */
 function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
     const [heading, setHeading] = useState("normal");
     const [editor] = useLexicalComposerContext();
@@ -322,7 +326,9 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
     );
 }
 
-// --- LOAD CONTENT PLUGIN ---
+/**
+ * Plugin to load and sync markdown content from the research desk
+ */
 function LoadContentPlugin({ content, deskId, messages }: { content?: string; deskId: string; messages: Message[] }) {
     const [editor] = useLexicalComposerContext();
     const loadedDeskRef = useRef<string | null>(null);
@@ -419,6 +425,10 @@ function onError(error: Error) {
     console.error(error);
 }
 
+/**
+ * Rich text editor component with markdown support and auto-save
+ * Uses Lexical editor with toolbar, formatting, and export features
+ */
 export default function TextEditor({ workspaceId, deskId }: { workspaceId: string; deskId: string }) {
     const addDocument = useAddDocumentToDesk();
     const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);

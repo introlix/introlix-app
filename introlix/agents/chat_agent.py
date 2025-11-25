@@ -52,7 +52,7 @@ class AgentDecision(BaseModel):
 
 
 INSTRUCTION = """
-You are Introlix Chat a part of Introlix Research OS. You task is to chat with user and answer to users query.
+You are Introlix Chat a part of Introlix. You task is to chat with user and answer to users query.
 You have access to internet search using search tool. You have access to mutliple tools:
 {tools}
 

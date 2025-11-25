@@ -2,7 +2,7 @@
 Base Agent Framework Module
 
 This module provides the foundational classes and abstractions for building AI agents
-in the Introlix Research Platform. It includes:
+in the Introlix. It includes:
 
 - BaseAgent: Abstract base class for all agents with LLM interaction capabilities
 - Tool: Representation of callable tools that agents can use

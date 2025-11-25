@@ -1,9 +1,14 @@
 import { Loader2, Sparkles, Brain, Globe, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Agent status display component
+ * Shows animated status indicators for different agent operations
+ */
 interface AgentStatusProps {
     message: string;
     subMessage?: string;
+    /** Type of agent operation: loading, planning, searching, thinking, or setup */
     type?: "loading" | "planning" | "searching" | "thinking" | "setup";
 }
 

@@ -131,7 +131,7 @@ class ContextOutput(BaseModel):
 
 class ContextAgent(BaseAgent):
     """
-    The Context Agent is the gateway to the Introlix Research Platform.
+    The Context Agent is the gateway to the Introlix Platform.
 
     This agent is responsible for gathering all necessary information from the user
     before research begins. It expands vague or incomplete queries into detailed,
@@ -175,7 +175,7 @@ class ContextAgent(BaseAgent):
         self.conversation_history = conversation_history
 
         self.row_instruction = f"""
-        You are a Context Agent in the Introlix Research Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
+        You are a Context Agent in the Introlix Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
         
         Today's date is {datetime.now().strftime("%Y-%m-%d")}
 
