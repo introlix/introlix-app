@@ -207,7 +207,7 @@ class SearXNGClient:
         serialized_results = [
             result.model_dump() if isinstance(result, WebpageSnippet) else result
             for result in results
-        ]
+        ]    
 
         user_prompt = f"""
         Original search query: {query}
@@ -231,6 +231,6 @@ class SearXNGClient:
 
 
 if __name__ == "__main__":
-    client = SearXNGClient(model="moonshotai/kimi-k2:free", min_delay_between_requests=6.0)
+    client = SearXNGClient(model="gemini-2.5-flash", min_delay_between_requests=6.0)
     results = asyncio.run(client.search(query="What is coding?"))
     print(results)

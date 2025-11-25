@@ -1,7 +1,48 @@
 """
-The Web Search Agent retrieves relevant information from the internet
-using SearXNG and web crawling. It operates on multiple topics in parallel
-and generates structured summaries for efficient downstream processing.
+The Explorer Agent retrieves and analyzes information from the internet using
+SearXNG search and web crawling. It operates on multiple topics in parallel,
+stores content in a vector database, and generates structured summaries for
+efficient downstream processing.
+
+Input Format:
+==============================================================================
+QUERIES: <list of search queries or research topics>
+UNIQUE_ID: <workspace identifier for data isolation>
+GET_ANSWER: <true | false - whether to generate summary answers>
+GET_MULTIPLE_ANSWER: <true | false - return multiple answers or single consolidated>
+MAX_RESULTS: <maximum number of search results per query>
+MODEL: <LLM model identifier for content analysis>
+==============================================================================
+
+Output Format:
+==============================================================================
+EXPLORER_OUTPUT: {
+    "topic": "<the research topic explored>",
+    "title": ["<webpage title 1>", "<webpage title 2>"],
+    "urls": ["<url 1>", "<url 2>"],
+    "summary": "<detailed summary of content relevant to the topic>",
+    "relevance_score": <0.0-1.0 score indicating content relevance>,
+    "source_type": "<academic | news | blog | government | commercial>"
+}
+==============================================================================
+
+Workflow:
+---------
+1. Search for relevant URLs using SearXNG
+2. Crawl and extract content from web pages in parallel
+3. Chunk content with semantic similarity filtering (threshold: 0.35)
+4. Store chunks in Pinecone vector database with workspace isolation
+5. Retrieve relevant chunks and generate LLM-powered summaries
+6. Retry failed queries up to max_retries times
+
+Notes:
+------
+- Uses Pinecone for vector storage with workspace (unique_id) isolation
+- Processes queries in batches of 5 to avoid search tool timeouts
+- Supports both single and multiple answer modes
+- Implements semantic similarity filtering to store only relevant chunks
+- Automatically retries queries that don't find sufficient data
+- Embedding model: google/embeddinggemma-300m
 """
 
 import asyncio
@@ -18,6 +59,20 @@ from introlix.utils.text_chunker import TextChunker
 from sentence_transformers import SentenceTransformer
 
 class ExplorerAgentOutput(BaseModel):
+    """
+    Structured output from the Explorer Agent's web search and analysis.
+
+    This model represents the analyzed and summarized information from web sources
+    relevant to a specific research topic.
+
+    Attributes:
+        topic (str): The research topic that was explored.
+        title (list): List of webpage titles from the sources.
+        urls (list): List of webpage URLs that were analyzed.
+        summary (str): Detailed summary of the content relevant to the topic.
+        relevance_score (float): Score between 0.0 and 1.0 indicating content relevance.
+        source_type (str): Type of source (academic, news, blog, government, commercial).
+    """
     topic: str = Field(description="The topic of the research")
     title: list = Field(description="The list title of the web page")
     urls: list = Field(description="The list url of the web page")
@@ -81,14 +136,54 @@ Note: If the title of the website does not match or is not good then don't get d
 """
 
 class ExplorerAgent:
-    def __init__(self, queries: list, unique_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5, model="google/gemini-2.5-flash"):
+    """
+    The Explorer Agent retrieves and analyzes information from the internet.
+
+    This agent performs web searches using SearXNG, crawls relevant pages, chunks the content,
+    stores it in a Pinecone vector database, and generates structured summaries using an LLM.
+    It supports parallel processing of multiple queries and workspace isolation.
+
+    Key Features:
+    1. Web search using SearXNG
+    2. Parallel web crawling and content extraction
+    3. Text chunking with semantic similarity filtering
+    4. Vector storage in Pinecone with workspace isolation
+    5. LLM-powered content summarization
+    6. Retry logic for failed queries
+
+    Workflow:
+    - Search for relevant URLs using SearXNG
+    - Crawl and extract content from web pages
+    - Chunk content and filter by semantic similarity
+    - Store chunks in Pinecone vector database
+    - Retrieve relevant chunks and generate summaries
+
+    Attributes:
+        queries (list): List of search queries to process.
+        unique_id (str): Workspace ID for data isolation.
+        get_answer (bool): Whether to generate summary answers.
+        get_multiple_answer (bool): Whether to return multiple answers per query.
+        max_results (int): Maximum number of search results per query.
+        model (str): LLM model identifier for summarization.
+        pc (Pinecone): Pinecone client instance.
+        index (Index): Pinecone index for vector storage.
+        embedding_model (SentenceTransformer): Model for generating embeddings.
+        explorer_agent (Agent): LLM agent for content analysis.
+        search_tool (SearXNGClient): Web search client.
+    """
+
+    def __init__(self, queries: list, unique_id: str, get_answer: bool, get_multiple_answer: bool, max_results = 5, model="gemini-2.5-flash"):
         """
         Initializes the ExplorerAgent with configuration parameters.
+
         Args:
-            queries (str): The search query or topic to explore.
-            unique_id (str): Unique id (Workspace ID) to isolate data per workspace.
-            get_answer (bool): Whether to generate a final answer summary.
-            get_multiple_answer (bool): Whether to return multiple answers based on different source or return one answer by summarizing the sources.
+            queries (list): List of search queries or topics to explore.
+            unique_id (str): Unique workspace ID to isolate data per workspace.
+            get_answer (bool): Whether to generate final answer summaries.
+            get_multiple_answer (bool): If True, returns multiple answers from different sources.
+                                        If False, returns one consolidated answer.
+            max_results (int): Maximum number of search results to process per query. Defaults to 5.
+            model (str): LLM model identifier for content analysis. Defaults to "gemini-2.5-flash".
         """
         self.INSTRUCTION = INSTRUCTION
         self.queries = queries
@@ -121,7 +216,12 @@ class ExplorerAgent:
         self._setup_index()
     
     def _setup_index(self):
-        """Create Pinecone index if it doesn't exist"""
+        """
+        Creates the Pinecone index if it doesn't exist.
+
+        This method initializes the vector database index with the appropriate
+        configuration for storing and searching document chunks.
+        """
         existing_indexes = [index.name for index in self.pc.list_indexes()]
         
         if self.index_name not in existing_indexes:
@@ -141,12 +241,25 @@ class ExplorerAgent:
     
     async def run(self, retry: int = 0, max_retries: int = 5, queries_to_process: list = None):
         """
-        Fixed version that handles each query independently
-        
+        Executes the exploration workflow for the configured queries.
+
+        This method orchestrates the entire process:
+        1. Searches Pinecone for existing relevant content
+        2. If no content found, fetches new data from the web
+        3. Generates summaries using the LLM
+        4. Retries failed queries up to max_retries times
+
         Args:
-            retry: Current retry count
-            max_retries: Maximum number of retries
-            queries_to_process: Specific queries to process (used in retries)
+            retry (int): Current retry attempt count. Defaults to 0.
+            max_retries (int): Maximum number of retry attempts. Defaults to 5.
+            queries_to_process (list, optional): Specific queries to process (used in retries).
+                                                 If None, processes all queries.
+
+        Returns:
+            Union[ExplorerAgentOutput, List[ExplorerAgentOutput], None]:
+                - Single ExplorerAgentOutput if get_answer=True and get_multiple_answer=False
+                - List of ExplorerAgentOutput if get_multiple_answer=True
+                - None if get_answer=False (data collection only)
         """
         if retry > max_retries:
             return ExplorerAgentOutput(
@@ -293,17 +406,30 @@ class ExplorerAgent:
         
     async def get_and_save_data(self, queries: list = None):
         """
-        Getting data from internet and saving it
-        
+        Fetches data from the internet and saves it to the vector database.
+
+        This method:
+        1. Performs web searches for each query
+        2. Crawls the resulting URLs in parallel
+        3. Chunks the content and filters by semantic similarity
+        4. Stores relevant chunks in Pinecone
+
+        Queries are processed in batches to avoid overwhelming the search tool.
+
         Args:
-            queries: List of queries to process. If None, uses self.queries
+            queries (list, optional): List of queries to process. If None, uses self.queries.
         """
         QUERY_BATCH_SIZE = 5  # Process 5 queries at a time
         BATCH_DELAY = 2  # Wait 2 seconds between batches
         queries_to_process = queries if queries else self.queries
 
         def save_records(records: list):
-            """Persist records to Pinecone in small batches as soon as they are available."""
+            """
+            Persists records to Pinecone in batches.
+
+            Args:
+                records (list): List of chunk records to save.
+            """
             if not records:
                 return
             BATCH_SIZE = 96
@@ -368,8 +494,22 @@ class ExplorerAgent:
 
     async def _crawl_and_chunk(self, query: str, url: str) -> list:
         """
-        Helper method to crawl a URL and create chunks
-        Returns a list of chunk records
+        Crawls a URL, extracts content, chunks it, and filters by semantic similarity.
+
+        This method:
+        1. Crawls the webpage and extracts text content
+        2. Divides content into chunks with overlap
+        3. Generates embeddings for query and chunks
+        4. Calculates similarity scores
+        5. Filters chunks above similarity threshold (0.35)
+        6. Returns formatted chunk records for Pinecone
+
+        Args:
+            query (str): The search query for similarity comparison.
+            url (str): The URL to crawl and process.
+
+        Returns:
+            list: List of chunk records with metadata, or empty list on error.
         """
         try:
             crawled_result = await web_crawler(url=url)
@@ -402,7 +542,6 @@ class ExplorerAgent:
                 similarity_score = float(similarities[idx])
 
                 if similarity_score >= similarity_threshold:
-                    print("Saving with score", similarity_score)
                     # Create chunk records
                     chunk_record = {
                         "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{chunk['chunk_id']}",
@@ -414,8 +553,6 @@ class ExplorerAgent:
                         "chunk_text": chunk['text']
                     }
                     relevant_chunks.append(chunk_record)
-                else:
-                    print("Skip with score", similarity_score)
             
             return relevant_chunks
         except Exception as e:
@@ -423,7 +560,15 @@ class ExplorerAgent:
             return []
     
     def is_url_exists(self, url: str) -> bool:
-        """Check if URL exists for this specific unique_id"""
+        """
+        Checks if a URL has already been crawled and stored for this workspace.
+
+        Args:
+            url (str): The URL to check.
+
+        Returns:
+            bool: True if the URL exists for this unique_id, False otherwise.
+        """
         url_hash = hashlib.md5(url.encode()).hexdigest()
         result = self.index.fetch(ids=[f"{url_hash}_chunk_0"])
         
@@ -435,7 +580,12 @@ class ExplorerAgent:
         return False
     
     def delete_workspace_data(self):
-        """Delete all data for this workspace (unique_id)"""
+        """
+        Deletes all stored data for the current workspace.
+
+        This removes all vectors and metadata associated with this unique_id
+        from the Pinecone index.
+        """
         self.index.delete(filter={"unique_id": self.unique_id})
             
 if __name__ == "__main__":
@@ -445,7 +595,7 @@ if __name__ == "__main__":
         get_answer=True, 
         get_multiple_answer=False, 
         max_results=2,
-        model="moonshotai/kimi-k2:free"
+        model="gemini-2.5-flash"
     )
     results = asyncio.run(explorer_agent.run())
     print(results)

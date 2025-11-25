@@ -76,6 +76,11 @@ export const DeskAIPannel = ({ workspaceId, deskId, messages }: DeskAIPannelProp
     const trimmed = message.trim();
     if (!trimmed) return;
 
+    // Clear input immediately
+    setMessage("");
+    setSelectedFiles([]);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+
     if (mode === "ask") {
       const userMessage: Message = {
         id: `user-${Date.now()}`,
@@ -92,10 +97,6 @@ export const DeskAIPannel = ({ workspaceId, deskId, messages }: DeskAIPannelProp
           messages: [...(old.messages || []), userMessage],
         };
       });
-
-      setMessage("");
-      setSelectedFiles([]);
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
 
       await startStreaming(workspaceId, deskId, {
         prompt: trimmed,
@@ -126,13 +127,6 @@ export const DeskAIPannel = ({ workspaceId, deskId, messages }: DeskAIPannelProp
           model: selectedModel
         }
       }, {
-        onSuccess: () => {
-          // Add a system message or notification? 
-          // For now just clear input
-          setMessage("");
-          setSelectedFiles([]);
-          if (textareaRef.current) textareaRef.current.style.height = "auto";
-        },
         onError: (error) => {
           console.error("Edit error:", error);
           // Optionally show error toast
@@ -317,16 +311,16 @@ export const DeskAIPannel = ({ workspaceId, deskId, messages }: DeskAIPannelProp
 
               <Button
                 onClick={handleSubmit}
-                disabled={!message.trim() || isStreaming}
+                disabled={!message.trim() || isStreaming || isEditing}
                 size="icon"
                 className={cn(
-                  "h-8 w-8 rounded-lg transition-all duration-200",
+                  "h-8 w-8 rounded-lg transition-all duration-200 cursor-pointer",
                   message.trim()
                     ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                     : "bg-muted text-muted-foreground cursor-not-allowed"
                 )}
               >
-                {isStreaming ? (
+                {isStreaming || isEditing ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                 ) : (
                   <ArrowUp className="h-4 w-4" />

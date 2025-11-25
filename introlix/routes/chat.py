@@ -5,10 +5,10 @@ from introlix.models import ChatRequest
 from introlix.agents.chat_agent import ChatAgent
 from introlix.models import WorkspaceChat, Message
 from introlix.database import db, serialize_doc, validate_object_id
-from introlix.services.LLMState import LLMState
+from introlix.config import AUTO_MODEL
+from introlix.utils.title_gen import generate_title
 
 chat_router = APIRouter(prefix='/workspace/{workspace_id}/chat', tags=['chat'])
-llm_state = LLMState()
 
 @chat_router.post('/new')
 async def create_chat(workspace_id: str, request: WorkspaceChat):
@@ -32,21 +32,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
 
     if not title:
         # Title is missing, set it
-        messages = [
-            {"role": "system", "content": "You are a title generator for chatbot. Your task is to generate best by seeing user prompt. Don't response with any exta token. Just give a simple title."},
-            {"role": "user", "content": request.prompt}
-        ]
-        response = await llm_state.get_open_router(
-            model_name="qwen/qwen3-235b-a22b:free", 
-            messages=messages,
-            stream=False
-        )
-        output = response.json()
-        
-        try:
-            new_title = output["choices"][0]["message"]["content"]
-        except:
-            new_title = output
+        new_title = await generate_title(request.prompt)
 
         await db.chats.update_one(
             {"_id": chat["_id"]},
@@ -60,7 +46,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
         )
     
     if request.model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = request.model
 

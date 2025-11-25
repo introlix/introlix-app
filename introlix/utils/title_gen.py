@@ -1,6 +1,5 @@
-from introlix.services.LLMState import LLMState
-
-llm_state = LLMState()
+from introlix.llm_config import cloud_llm_manager
+from introlix.config import CLOUD_PROVIDER
 
 
 async def generate_title(prompt: str) -> str:
@@ -11,14 +10,20 @@ async def generate_title(prompt: str) -> str:
         },
         {"role": "user", "content": prompt},
     ]
-    response = await llm_state.get_open_router(
-        model_name="qwen/qwen3-235b-a22b:free", messages=messages, stream=False
+
+    output = await cloud_llm_manager(
+        model_name="gemini-2.0-flash",
+        provider=CLOUD_PROVIDER,
+        messages=messages,
+        stream=False,
     )
-    output = response.json()
 
-    try:
-        new_title = output["choices"][0]["message"]["content"]
-    except:
-        new_title = output
+    return output
 
-    return new_title
+
+if __name__ == "__main__":
+    import asyncio
+
+    prompt = "Explain the theory of relativity in simple terms."
+    title = asyncio.run(generate_title(prompt))
+    print("Generated Title:", title)

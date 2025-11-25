@@ -29,15 +29,13 @@ from introlix.agents.planner_agent import PlannerAgent
 from introlix.agents.explorer_agent import ExplorerAgent
 from introlix.agents.chat_agent import ChatAgent
 from introlix.agents.edit_agent import EditAgent
-from introlix.services.LLMState import LLMState
+from introlix.config import AUTO_MODEL
 
 logger = logging.getLogger(__name__)
 
 research_desk_router = APIRouter(
     prefix="/workspace/{workspace_id}/research-desk", tags=["research_desk"]
 )
-
-llm_state = LLMState()
 
 @research_desk_router.post("/new")
 async def create_research_desk(workspace_id: str, request: ResearchDesk):
@@ -176,7 +174,7 @@ async def setup_research_desk_context_agent(
         )
 
     if request.model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = request.model
 
@@ -308,7 +306,7 @@ async def setup_research_desk_planner_agent(
         )
 
     if model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = model
 
@@ -493,7 +491,7 @@ async def setup_research_desk_explorer_agent(
         )
     
     if model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = model
 
@@ -583,14 +581,17 @@ async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest
         raise HTTPException(status_code=404, detail="Research Desk not found")
 
     if request.model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = request.model
+
+    # Load chat history from database
+    messages = research_desk.get("messages", [])
 
     # Getting the document written till now if written
     current_docs = research_desk.get("documents", {}) or {}
     if current_docs:
-        currnet_content = current_docs.get("content", "")
+        currnet_content = current_docs["document"]["content"]
     else:
         currnet_content = ""
 
@@ -598,7 +599,8 @@ async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest
     edit_agent = EditAgent(
         unique_id=workspace_id,
         model=model,
-        current_content=currnet_content
+        current_content=currnet_content,
+        conversation_history=messages
     )
 
     try:
@@ -607,10 +609,7 @@ async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest
         
         # Update document in database
         if isinstance(current_docs, dict):
-            current_docs["content"] = new_content
-        else:
-            # If it's not a dict (unlikely based on type hint but possible in mongo), make it one
-            current_docs = {"content": new_content}
+            current_docs["document"]["content"] = new_content
 
         # Create user message
         user_msg = Message(
@@ -672,12 +671,18 @@ async def chat(workspace_id: str, desk_id: str, request: ResearchDeskRequest):
         raise HTTPException(status_code=404, detail="Research Desk not found")
     
     if request.model == "auto":
-        model = "moonshotai/kimi-k2:free"
+        model = AUTO_MODEL
     else:
         model = request.model
 
     # Load chat history from database
     messages = research_desk.get("messages", [])
+
+    # Adding document content to context if available on user prompt
+    current_docs = research_desk.get("documents", {}) or {}
+    if current_docs:
+        doc_content = current_docs["document"]["content"]
+        request.prompt = f"Document Content: {doc_content}\n\nUser Question: {request.prompt}"
 
     # Create user message
     user_message = Message(

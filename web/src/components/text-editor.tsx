@@ -72,6 +72,7 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from './ui/select';
 import { useDesk, useAddDocumentToDesk } from '@/hooks/use-desk';
+import { Message } from '@/lib/types';
 
 // --- EXPORT DIALOG ---
 interface ExportDialogProps {
@@ -322,16 +323,18 @@ function ToolbarPlugin({ openExportDialog }: { openExportDialog: () => void }) {
 }
 
 // --- LOAD CONTENT PLUGIN ---
-function LoadContentPlugin({ content, deskId }: { content?: string; deskId: string }) {
+function LoadContentPlugin({ content, deskId, messages }: { content?: string; deskId: string; messages: Message[] }) {
     const [editor] = useLexicalComposerContext();
     const loadedDeskRef = useRef<string | null>(null);
     const hasLoadedRef = useRef(false);
+    const lastMessageIdRef = useRef<string | null>(null);
 
     useEffect(() => {
         // Reset when desk changes
         if (loadedDeskRef.current !== deskId) {
             hasLoadedRef.current = false;
             loadedDeskRef.current = deskId;
+            lastMessageIdRef.current = null;
         }
     }, [deskId]);
 
@@ -351,7 +354,40 @@ function LoadContentPlugin({ content, deskId }: { content?: string; deskId: stri
         });
 
         hasLoadedRef.current = true;
-    }, [editor, content]);
+        // Initialize last message id
+        if (messages && messages.length > 0) {
+            lastMessageIdRef.current = messages[messages.length - 1].id;
+        }
+    }, [editor, content, messages]);
+
+    // Handle updates from Assistant
+    useEffect(() => {
+        if (!content || !hasLoadedRef.current) return;
+
+        const lastMsg = messages && messages.length > 0 ? messages[messages.length - 1] : null;
+
+        if (!lastMsg) return;
+        if (lastMsg.id === lastMessageIdRef.current) return;
+
+        lastMessageIdRef.current = lastMsg.id;
+
+        if (lastMsg.role === 'assistant') {
+            editor.read(() => {
+                const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
+                if (currentMarkdown !== content) {
+                    editor.update(() => {
+                        const root = $getRoot();
+                        root.clear();
+                        try {
+                            $convertFromMarkdownString(content, TRANSFORMERS);
+                        } catch (err) {
+                            console.error('Failed to load markdown:', err);
+                        }
+                    });
+                }
+            });
+        }
+    }, [messages, content, editor]);
 
     return null;
 }
@@ -456,6 +492,11 @@ export default function TextEditor({ workspaceId, deskId }: { workspaceId: strin
         return typeof content === 'string' ? content : undefined;
     }, [deskQuery.data]);
 
+    const messages = React.useMemo(() => {
+        const data = deskQuery.data as any;
+        return (data?.messages || []) as Message[];
+    }, [deskQuery.data]);
+
     return (
         <div className="h-screen flex flex-col bg-background">
             <LexicalComposer initialConfig={initialConfig}>
@@ -464,7 +505,7 @@ export default function TextEditor({ workspaceId, deskId }: { workspaceId: strin
                 <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-800 p-8">
                     <div className="bg-card border rounded-lg shadow-lg w-[8.5in] min-h-[11in] mx-auto mb-8">
                         <div className="relative p-[1in]">
-                            {deskContent && <LoadContentPlugin content={deskContent} deskId={deskId} />}
+                            {deskContent && <LoadContentPlugin content={deskContent} deskId={deskId} messages={messages} />}
                             <RichTextPlugin
                                 contentEditable={
                                     <ContentEditable

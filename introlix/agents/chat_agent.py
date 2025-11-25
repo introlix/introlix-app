@@ -1,3 +1,19 @@
+"""
+Conversational Chat Agent Module
+
+This module provides the ChatAgent class, an intelligent conversational agent with
+internet search capabilities. The agent can:
+
+- Maintain conversation history across multiple turns
+- Use search tools to gather current information
+- Reason about whether it needs more information
+- Stream responses back to users in real-time
+- Make decisions about tool usage vs. direct answers
+
+The ChatAgent is designed for interactive chat interfaces where users ask questions
+and the agent provides informed, up-to-date answers by searching the web when needed.
+"""
+
 import json
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, AsyncGenerator
@@ -8,6 +24,8 @@ from introlix.agents.baseclass import (
     Tool,
 )
 from introlix.agents.explorer_agent import ExplorerAgent
+from introlix.llm_config import cloud_llm_manager
+from introlix.config import CLOUD_PROVIDER
 
 
 class ToolCall(BaseModel):
@@ -69,6 +87,22 @@ Response: {{"type": "tool", "thought": "Need current weather data", "tool_calls"
 
 
 class ChatAgent(BaseAgent):
+    """
+    An agent designed for conversational interactions with search capabilities.
+
+    This agent can:
+    1. Maintain conversation history.
+    2. Use tools (specifically search) to gather information.
+    3. Reason about whether it needs more information or can answer directly.
+    4. Stream its response back to the user.
+
+    Attributes:
+        unique_id (str): A unique identifier for the user or session.
+        tools (List[Dict]): A list of tool definitions available to the agent.
+        sys_prompt (str): The system prompt defining the agent's behavior and persona.
+        conversation_history (List[Dict]): The history of the conversation.
+    """
+
     def __init__(
         self,
         unique_id: str,
@@ -77,6 +111,17 @@ class ChatAgent(BaseAgent):
         max_iterations=5,
         conversation_history: Optional[List[Dict]] = None,
     ):
+        """
+        Initialize the ChatAgent.
+
+        Args:
+            unique_id (str): Unique identifier for the session/user.
+            model (str): The name of the LLM model to use.
+            config (Optional[AgentInput]): Configuration for the agent. If None, a default config 
+                                           with search tools is created.
+            max_iterations (int): Maximum number of reasoning/tool-use steps. Defaults to 5.
+            conversation_history (Optional[List[Dict]]): Existing conversation history. Defaults to None.
+        """
 
         if config is None:
             config = AgentInput(
@@ -93,9 +138,14 @@ class ChatAgent(BaseAgent):
         self.conversation_history = conversation_history or []
 
     def _create_tools(self):
+        """
+        Creates the default tools for the agent, specifically the search tool.
+
+        Returns:
+            List[Tool]: A list of Tool objects available to the agent.
+        """
         async def search(queries: List[str] = None, query: str = None) -> str:
             """Search tool that accepts both 'queries' and 'query' for flexibility"""
-            print("Query is", queries)
 
             # Handle query format
             if query is not None and queries is None:
@@ -113,8 +163,6 @@ class ChatAgent(BaseAgent):
             )
 
             results = await explorer.run()
-
-            print(results)
 
             formatted = []
             for result in results:
@@ -155,7 +203,23 @@ class ChatAgent(BaseAgent):
         ]
 
     def _build_messages_array(self, user_prompt: str, state: Dict[str, Any]) -> List[Dict]:
-        """Build messages array"""
+        """
+        Constructs the list of messages to send to the LLM.
+
+        This includes:
+        1. The system prompt.
+        2. Recent conversation history (truncated to manage context).
+        3. The current user prompt.
+        4. Results from any tools executed in the current turn.
+        5. Instructions for the agent to make a decision (JSON format).
+
+        Args:
+            user_prompt (str): The current user query.
+            state (Dict[str, Any]): The current state containing tool results and history.
+
+        Returns:
+            List[Dict]: A list of message dictionaries formatted for the LLM.
+        """
         messages = [
             {"role": "system", "content": self.sys_prompt}
         ]
@@ -200,30 +264,50 @@ class ChatAgent(BaseAgent):
         messages: List[Dict], 
         stream: bool = False
     ):
-        """Call LLM with messages array (ChatGPT style)"""
-        from introlix.services.LLMState import LLMState
-        
-        llm_state = LLMState()
-        response = await llm_state.get_open_router(
-            model_name=self.model, 
+        """
+        Calls the LLM with the constructed message array.
+
+        Args:
+            messages (List[Dict]): The list of messages to send.
+            stream (bool): Whether to stream the response. Defaults to False.
+
+        Returns:
+            The response from the LLM (string or generator).
+        """
+        output = await cloud_llm_manager(
+            model_name=self.model,
+            provider=CLOUD_PROVIDER,
             messages=messages,
-            stream=stream
+            stream=stream,
         )
-        
-        if stream:
-            return response
-        else:
-            output = response.json()
-            try:
-                return output["choices"][0]["message"]["content"]
-            except:
-                return output
+        return output
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
-        """Legacy method - not used in arun anymore"""
+        """
+        Legacy method required by BaseAgent but not used in this implementation.
+        
+        The ChatAgent uses `_build_messages_array` instead to support chat history.
+        """
         pass
 
     async def arun(self, user_prompt: str) -> AsyncGenerator[str, None]:
+        """
+        Runs the agent asynchronously, handling the reasoning loop and streaming the response.
+
+        The process involves:
+        1. Iterating up to `max_iterations`.
+        2. Building messages and calling the LLM to get a decision (Action/Thought).
+        3. Parsing the LLM's JSON output.
+        4. Executing tools if requested.
+        5. If the agent decides it has enough info (or hits max iterations), it generates a final answer.
+        6. The final answer is streamed back to the caller.
+
+        Args:
+            user_prompt (str): The user's input query.
+
+        Yields:
+            str: Chunks of the response, including thoughts, tool status, and the final answer.
+        """
         state = {"history": [], "tool_results": {}}
 
         for iteration in range(self.max_iterations):
@@ -344,7 +428,7 @@ class ChatAgent(BaseAgent):
 
 
 async def main():
-    agent = ChatAgent(unique_id="user1", model="moonshotai/kimi-k2:free")
+    agent = ChatAgent(unique_id="user1", model="gemini-2.5-flash")
 
     async for chunk in agent.arun("PM of Nepal"):
         print(chunk, end="", flush=True)

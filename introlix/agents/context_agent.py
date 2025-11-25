@@ -45,6 +45,18 @@ from introlix.agents.baseclass import AgentInput, AgentOutput, BaseAgent, Prompt
 
 
 class ResearchParameters(BaseModel):
+    """
+    Parameters that guide downstream research agents in their execution.
+
+    These parameters are determined by the ContextAgent based on the user's query
+    and help optimize resource allocation and research strategy.
+
+    Attributes:
+        estimated_duration (Literal["short", "medium", "long"]): Expected time to complete the research.
+        complexity_level (Literal["basic", "intermediate", "advanced"]): The sophistication level of the research.
+        required_sources (Literal["academic", "news", "mixed", "technical"]): The type of sources to prioritize.
+        research_depth (Literal["surface", "detailed", "comprehensive"]): How deep the research should go.
+    """
     estimated_duration: Literal["short", "medium", "long"] = Field(
         description="Estimated research duration"
     )
@@ -60,6 +72,18 @@ class ResearchParameters(BaseModel):
 
 
 class ContextInput(BaseModel):
+    """
+    Input structure for the ContextAgent.
+
+    This model validates and structures the information provided to the ContextAgent,
+    including the user's query, any previous answers, uploaded files, and research scope.
+
+    Attributes:
+        query (str): The original user query or research question.
+        answer_to_questions (Optional[str]): User's responses to previous clarification questions.
+        user_files (Optional[List[Dict]]): Metadata and content summaries from uploaded files.
+        research_scope (str): The desired scope of research (narrow, medium, or comprehensive).
+    """
     query: str = Field(description="Original user query")
     answer_to_questions: Optional[str] = Field(
         default=None, description="User's answers to previous clarification questions"
@@ -74,6 +98,20 @@ class ContextInput(BaseModel):
 
 
 class ContextOutput(BaseModel):
+    """
+    Output structure from the ContextAgent.
+
+    This model represents the ContextAgent's decision about whether it has enough
+    information to proceed with research, along with any clarification questions
+    and the enriched research prompt.
+
+    Attributes:
+        questions (List[str]): Clarification questions to ask the user (max 5 to avoid fatigue).
+        move_next (bool): Whether the agent has enough context to proceed to the next stage.
+        confidence_level (float): A score from 0.0 to 1.0 indicating certainty (>= 0.7 to proceed).
+        final_prompt (str): A comprehensive, enriched prompt consolidating all user input.
+        research_parameters (ResearchParameters): Parameters guiding downstream agent behavior.
+    """
     questions: List[str] = Field(
         description="List of clarification questions to ask the user"
     )
@@ -92,9 +130,45 @@ class ContextOutput(BaseModel):
 
 
 class ContextAgent(BaseAgent):
+    """
+    The Context Agent is the gateway to the Introlix Research Platform.
+
+    This agent is responsible for gathering all necessary information from the user
+    before research begins. It expands vague or incomplete queries into detailed,
+    well-scoped prompts by asking clarification questions when required.
+
+    The ContextAgent's output directly controls the entire research workflow:
+    - Planner Agent (creates research plans)
+    - Explorer Agents (web searches in parallel)
+    - Verifier Agent (fact-checking)
+    - Knowledge Gap Agent (quality control)
+    - Researcher Agent (final synthesis)
+
+    Key Responsibilities:
+    1. Assess query specificity and clarity
+    2. Determine research type and scope
+    3. Identify source requirements and quality standards
+    4. Ask clarification questions when confidence is low (< 0.7)
+    5. Generate enriched prompts and research parameters
+
+    Attributes:
+        conversation_history (List[Dict]): History of the conversation for context.
+        row_instruction (str): The detailed system prompt defining agent behavior.
+        logger (logging.Logger): Logger instance for the agent.
+    """
+
     def __init__(
         self, config: AgentInput, model, conversation_history, max_iterations: int = 3
     ):
+        """
+        Initialize the ContextAgent.
+
+        Args:
+            config (AgentInput): Configuration for the agent including tools and output type.
+            model: The LLM model to use for context gathering.
+            conversation_history: Existing conversation history for context.
+            max_iterations (int): Maximum number of clarification iterations. Defaults to 3.
+        """
         super().__init__(config=config, model=model, max_iterations=max_iterations)
         self.logger = logging.getLogger(__name__)
 
@@ -206,13 +280,32 @@ class ContextAgent(BaseAgent):
         """
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
-        """Build context-specific prompt for analysis with proper input validation."""
-
+        """
+        Legacy method required by BaseAgent but not used in this implementation.
+        
+        The ContextAgent uses `_build_messages_array` instead to support conversation history.
+        """
         pass
 
     def _build_messages_array(
         self, user_prompt: str, state: Dict[str, Any]
     ) -> List[Dict]:
+        """
+        Constructs the message array for the LLM, including system prompt and conversation history.
+
+        This method:
+        1. Validates and parses the user input (JSON or plain string)
+        2. Builds the system message with the agent's instructions
+        3. Adds recent conversation history (last 10 messages)
+        4. Formats the current query with all relevant context
+
+        Args:
+            user_prompt (str): The user's input (can be JSON or plain text).
+            state (Dict[str, Any]): Current execution state.
+
+        Returns:
+            List[Dict]: A list of message dictionaries formatted for the LLM.
+        """
         # Parse and validate input using the ContextInput modelCONFIDENCE_LEVEL
         try:
             if isinstance(user_prompt, str):
@@ -288,8 +381,24 @@ class ContextAgent(BaseAgent):
         return messages
 
     async def _parse_output(self, raw_output: str) -> Any:
-        """Parse LLM output and validate structure."""
-        print("Raw ouput", raw_output)
+        """
+        Parses and validates the raw LLM output into a ContextOutput object.
+
+        This method handles multiple output formats:
+        1. Nested structure: {"type": "final", "answer": {...}}
+        2. Direct ContextOutput structure
+        3. JSON wrapped in markdown code fences
+
+        The parser uses regex to extract JSON objects and validates them against
+        the ContextOutput schema. If parsing fails, it returns a fallback output
+        with confidence_level=0.0 and move_next=false.
+
+        Args:
+            raw_output (str): The raw string response from the LLM.
+
+        Returns:
+            ContextOutput: A validated ContextOutput object.
+        """
         
         # Strip markdown code fences if present
         cleaned_output = raw_output.strip()
@@ -346,7 +455,6 @@ class ContextAgent(BaseAgent):
             cleaned_output = "\n".join(lines).strip()
             
             try:
-                print("Cleaned output is", cleaned_output)
                 parsed_output = json.loads(cleaned_output)
                 if parsed_output.get("type") == "final" and "answer" in parsed_output:
                     answer = parsed_output["answer"]
@@ -381,7 +489,18 @@ class ContextAgent(BaseAgent):
         )
 
     def _decide_action(self, parsed_output: Any) -> Dict[str, Any]:
-        """Override the base class method to handle ContextOutput specifically."""
+        """
+        Determines the next action based on the parsed output.
+
+        For ContextOutput objects, this always returns a 'final' action type,
+        as the ContextAgent doesn't use tools or delegate to other agents.
+
+        Args:
+            parsed_output (Any): The validated output from `_parse_output`.
+
+        Returns:
+            Dict[str, Any]: A dictionary with 'type' and 'answer' keys.
+        """
 
         # If it's a ContextOutput object, always treat it as final
         if isinstance(parsed_output, ContextOutput):
@@ -391,6 +510,21 @@ class ContextAgent(BaseAgent):
         return super()._decide_action(parsed_output)
 
     async def arun(self, user_prompt: str):
+        """
+        Executes a single run of the ContextAgent.
+
+        This method:
+        1. Builds the message array from the user prompt
+        2. Calls the LLM to analyze the query and determine if more context is needed
+        3. Parses the output into a ContextOutput object
+        4. Returns an AgentOutput with the result
+
+        Args:
+            user_prompt (str): The user's input (can be JSON string or plain text).
+
+        Returns:
+            AgentOutput: The result containing a ContextOutput object.
+        """
         state = {"history": [], "tool_results": {}}
 
         messages = self._build_messages_array(user_prompt, state)
@@ -429,7 +563,19 @@ class ContextAgent(BaseAgent):
         user_files: Optional[List] = None,
     ) -> ContextOutput:
         """
-        Single method - takes input, returns output. That's it.
+        High-level convenience method for processing a user query.
+
+        This is the recommended entry point for using the ContextAgent. It handles
+        the creation of the ContextInput object and returns the ContextOutput directly.
+
+        Args:
+            query (str): The user's research query.
+            answers (Optional[str]): Answers to previous clarification questions.
+            research_scope (str): The desired research scope (narrow, medium, or comprehensive).
+            user_files (Optional[List]): List of uploaded file metadata.
+
+        Returns:
+            ContextOutput: The agent's decision including questions, confidence, and enriched prompt.
         """
         context_input = ContextInput(
             query=query,

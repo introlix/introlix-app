@@ -79,6 +79,13 @@ from introlix.agents.base_agent import Agent
 from introlix.agents.baseclass import AgentInput
 
 class ResearcherAgentOutput(BaseModel):
+    """
+    Output structure from the Researcher Agent's synthesis process.
+
+    Attributes:
+        result (str): The final synthesized research output with structured content.
+        references (list): List of all sources cited in the research output.
+    """
     result: str = Field(description="The final synthesized research output")
     references: list = Field(description="List of all sources cited in the research output")
 
@@ -114,7 +121,38 @@ Make sure to only respond with the JSON format specified above and nothing else.
 """
 
 class ResearcherAgent:
+    """
+    The Researcher Agent synthesizes verified information into comprehensive research outputs.
+
+    This agent acts as the final synthesis engine in the research pipeline, creating
+    structured, well-referenced research documents from validated data. It produces
+    professional research outputs with proper citations, analysis, and recommendations.
+
+    Key Responsibilities:
+    1. Synthesize verified information into coherent narratives
+    2. Create structured research documents with multiple sections
+    3. Ensure proper citation and source attribution
+    4. Acknowledge limitations and conflicting information
+    5. Provide actionable recommendations based on findings
+
+    Output Sections:
+    - Executive summary
+    - Introduction and methodology
+    - Key findings with evidence
+    - Analysis and conclusions
+    - Recommendations
+    - Bibliography and appendices
+
+    Attributes:
+        INSTRUCTIONS (str): The system prompt defining agent behavior.
+        agent_config (AgentInput): Configuration for the agent.
+        researcher_agent (Agent): The underlying LLM agent for synthesis.
+    """
+
     def __init__(self):
+        """
+        Initializes the ResearcherAgent with default configuration.
+        """
         self.INSTRUCTIONS = INSTRUCTIONS
         
         self.agent_config = AgentInput(
