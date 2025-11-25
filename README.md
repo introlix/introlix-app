@@ -3,7 +3,7 @@
 <div align="center">
 
 <!-- Add your logo here -->
-![Introlix Logo](./docs/assets/logo.png)
+<!-- ![Introlix Logo](./docs/assets/logo.png) -->
 
 **An AI-powered research platform that transforms how you conduct research**
 
