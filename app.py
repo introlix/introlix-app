@@ -1,13 +1,16 @@
-from bson import ObjectId
+from pinecone import Pinecone
+from introlix.config import PINECONE_KEY
 from fastapi import FastAPI, HTTPException, Query
 from introlix.database import db, serialize_doc, validate_object_id
-from introlix.models import Workspace, WorkspaceItem
+from introlix.models import Workspace
 from introlix.schemas import PaginatedResponse
 from introlix.routes.chat import chat_router
-from datetime import datetime
+from introlix.routes.research_desk import research_desk_router
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo import DESCENDING
 
-app = FastAPI(title="Introlix OS", openapi_prefix='/api/v1')
+app = FastAPI(title="Introlix", openapi_prefix="/api/v1")
+pc = Pinecone(api_key=PINECONE_KEY)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,21 +20,70 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # workspace endpoints
 @app.post("/workspaces", tags=["workspace"])
 async def create_workspace(workspace: Workspace):
     workspace_dict = workspace.model_dump()
     result = await db.workspaces.insert_one(workspace_dict)
     created_workspace = await db.workspaces.find_one({"_id": result.inserted_id})
-    return {"message": "Workspace created", "workspace": serialize_doc(created_workspace)}
+    return {
+        "message": "Workspace created",
+        "workspace": serialize_doc(created_workspace),
+    }
+
 
 @app.get("/workspaces", response_model=PaginatedResponse, tags=["workspace"])
 async def get_workspaces(page: int = Query(1, ge=1), limit: int = Query(10, ge=1)):
     skip = (page - 1) * limit
     total = await db.workspaces.count_documents({})
-    cursor = db.workspaces.find().skip(skip).limit(limit)
+    cursor = db.workspaces.find().sort("updated_at", DESCENDING).skip(skip).limit(limit)
     workspaces = [serialize_doc(w) async for w in cursor]
     return {"items": workspaces, "total": total, "page": page, "limit": limit}
+
+
+# Get all items in every workspaces (chats, deep research, research desk, etc.)
+@app.get("/workspaces/items", response_model=PaginatedResponse, tags=["workspace"])
+async def get_all_workspace_items(
+    page: int = Query(1, ge=1), limit: int = Query(10, ge=1)
+):
+    # get chats related to the workspace
+    chat_total = await db.chats.count_documents({})
+    chats = (
+        db.chats.find(
+            {},
+            {"_id": 1, "workspace_id": 1, "created_at": 1, "title": 1, "updated_at": 1},
+        )
+        .sort("updated_at", DESCENDING)
+        .skip((page - 1) * limit)
+        .limit(limit)
+    )
+    chat_list = [serialize_doc(chat) async for chat in chats]
+
+    for chat in chat_list:
+        chat["type"] = "chat"
+
+    # get desks related to the workspace
+    desk_total = await db.research_desks.count_documents({})
+    desks = (
+        db.research_desks.find(
+            {},
+            {"_id": 1, "workspace_id": 1, "created_at": 1, "title": 1, "updated_at": 1},
+        )
+        .sort("updated_at", DESCENDING)
+        .skip((page - 1) * limit)
+        .limit(limit)
+    )
+    desk_list = [serialize_doc(desk) async for desk in desks]
+
+    for desk in desk_list:
+        desk["type"] = "desk"
+
+    items = desk_list + chat_list
+    items = sorted(items, key=lambda x: x["updated_at"], reverse=True)
+
+    return {"items": items, "total": chat_total + desk_total, "page": page, "limit": limit}
+
 
 @app.get("/workspaces/{id}", tags=["workspace"])
 async def get_workspace(id: str):
@@ -40,80 +92,81 @@ async def get_workspace(id: str):
         raise HTTPException(status_code=404, detail="Workspace not found")
     return serialize_doc(workspace)
 
+
 @app.delete("/workspaces/{id}", tags=["workspace"])
 async def delete_workspace(id: str):
     object_id = validate_object_id(id)
     result = await db.workspaces.delete_one({"_id": object_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    # Get the workspace id field if it exists, otherwise use the _id
-    workspace = await db.workspaces.find_one({"_id": object_id})
-    workspace_id = workspace.get("id", str(object_id)) if workspace else str(object_id)
-    await db.workspace_items.delete_many({"workspace_id": workspace_id})
+
+    # Delete Search Data
+    try:
+        index = pc.Index("explored-data-index")
+        index.delete(namespace="Search", filter={"unique_id": id})
+    except:
+        pass  # No data to delete
+
+    # Now delete workspace items
+    # Delete chats
+    await db.chats.delete_many({"workspace_id": str(object_id)})
+    # TODO: Delete other related items like deep research, research desk, etc.
+
     return {"message": "Workspace and related items deleted"}
 
-# workspace items
-@app.post("/workspaces/{workspace_id}/items", tags=["workspace_item"])
-async def create_workspace_item(workspace_id: str, item: WorkspaceItem):
-    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
 
-    item.workspace_id = workspace_id
-    item_dict = item.model_dump()
-    result = await db.workspace_items.insert_one(item_dict)
-    created_item = await db.workspace_items.find_one({"_id": result.inserted_id})
-    return {"message": "Workspace item created", "item": serialize_doc(created_item)}
-
-@app.get("/workspaces/{workspace_id}/items", response_model=PaginatedResponse, tags=["workspace_item"])
+# Get all items related to a workspace (chats, deep research, research desk, etc.)
+@app.get("/workspaces/{id}/items", response_model=PaginatedResponse, tags=["workspace"])
 async def get_workspace_items(
-    workspace_id: str,
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1),
+    id: str, page: int = Query(1, ge=1), limit: int = Query(10, ge=1)
 ):
-    workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    skip = (page - 1) * limit
-    total = await db.workspace_items.count_documents({"workspace_id": workspace_id})
-    cursor = db.workspace_items.find({"workspace_id": workspace_id}).skip(skip).limit(limit)
-    items = [serialize_doc(i) async for i in cursor]
-
-    return {"items": items, "total": total, "page": page, "limit": limit}
-
-@app.get("/workspaces/{workspace_id}/items/{item_id}", tags=["workspace_item"])
-async def get_workspace_item(workspace_id: str, item_id: str):
-    item = await db.workspace_items.find_one({"_id": validate_object_id(item_id), "workspace_id": workspace_id})
-    if not item:
-        raise HTTPException(status_code=404, detail="Workspace item not found")
-    return serialize_doc(item)
-
-@app.put("/workspaces/{workspace_id}/items/{item_id}", tags=["workspace_item"])
-async def update_workspace_item(workspace_id: str, item_id: str, item: WorkspaceItem):
-    update_data = item.model_dump(exclude_unset=True)
-    update_data["updated_at"] = datetime.now()
-    result = await db.workspace_items.update_one(
-        {"_id": validate_object_id(item_id), "workspace_id": workspace_id}, 
-        {"$set": update_data}
+    object_id = validate_object_id(id)
+    # get chats related to the workspace
+    chat_total = await db.chats.count_documents({"workspace_id": str(object_id)})
+    chats = (
+        db.chats.find(
+            {"workspace_id": str(object_id)},
+            {"_id": 1, "workspace_id": 1, "created_at": 1, "title": 1, "updated_at": 1},
+        )
+        .sort("updated_at", DESCENDING)
+        .skip((page - 1) * limit)
+        .limit(limit)
     )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Workspace item not found")
-    return {"message": "Workspace item updated"}
+    chat_list = [serialize_doc(chat) async for chat in chats]
 
-@app.delete("/workspaces/{workspace_id}/items/{item_id}", tags=["workspace_item"])
-async def delete_workspace_item(workspace_id: str, item_id: str):
-    result = await db.workspace_items.delete_one(
-        {"_id": validate_object_id(item_id), "workspace_id": workspace_id}
+    for chat in chat_list:
+        chat["type"] = "chat"
+
+    # get desks related to the workspace
+    desk_total = await db.research_desks.count_documents(
+        {"workspace_id": str(object_id)}
     )
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Workspace item not found")
-    return {"message": "Workspace item deleted"}
+    desks = (
+        db.research_desks.find(
+            {"workspace_id": str(object_id)},
+            {"_id": 1, "workspace_id": 1, "created_at": 1, "title": 1, "updated_at": 1},
+        )
+        .sort("updated_at", DESCENDING)
+        .skip((page - 1) * limit)
+        .limit(limit)
+    )
+    desk_list = [serialize_doc(desk) async for desk in desks]
+
+    for desk in desk_list:
+        desk["type"] = "desk"
+
+    items = desk_list + chat_list
+    items = sorted(items, key=lambda x: x["updated_at"], reverse=True)
+
+    return {"items": items, "total": chat_total + desk_total, "page": page, "limit": limit}
+
 
 @app.get("/")
 def read_root():
     return {"message": "Hello, FastAPI!"}
 
+
 # basic routes
 
 app.include_router(chat_router)
+app.include_router(research_desk_router)

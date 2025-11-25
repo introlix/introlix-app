@@ -1,15 +1,40 @@
 [project]
 name = "introlix-research"
-description = "A research platform for researchers"
-authors = [{ name = "Satyam Mishra" }]
+description = "An AI-powered research platform that transforms how you conduct research"
+authors = [{ name = "Satyam Mishra", email = "satyam@introlix.ai" }]
 version = "0.0.1"
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+license = { text = "Apache-2.0" }
+keywords = [
+    "ai",
+    "research",
+    "llm",
+    "agent",
+    "search",
+    "knowledge-management",
+    "fastapi",
+    "machine-learning",
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Framework :: FastAPI",
+]
+
+[project.urls]
+Homepage = "https://github.com/introlix/introlix-research"
+Repository = "https://github.com/introlix/introlix-research"
+Documentation = "https://github.com/introlix/introlix-research/tree/main/docs"
+"Bug Tracker" = "https://github.com/introlix/introlix-research/issues"
 dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.5",
@@ -25,7 +50,9 @@ dependencies = [
     "pdfplumber>=0.11.7",
     "tiktoken>=0.11.0",
     "pinecone>=7.3.0",
-    "motor>=3.7.1"
+    "motor>=3.7.1",
+    "sentence-transformers>=5.1.2",
+    "huggingface-hub>=1.1.5",
 ]
 [tool.setuptools.packages.find]
 include = ["introlix*"]

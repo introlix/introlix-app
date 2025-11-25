@@ -16,13 +16,18 @@ class ChatRequest(BaseModel):
 
 # Workspace Model
 class Workspace(BaseModel):
-    id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: Optional[str] = None
     name: str
     user_id: str
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
 # Workspace Workspace Items
+class WorkspaceItem(BaseModel):
+    id: Optional[str] = None
+    workspace_id: str
+    item_type: Literal["research_desk", "chat", "deep_research"]
+    
 # Chat
 class Message(BaseModel):
     """Individual message in a chat"""
@@ -41,12 +46,39 @@ class WorkspaceChat(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
-# Deep Research
-class WorkspaceItem(BaseModel):
+# Context Agent
+class ContextAgent(BaseModel):
+    conv_history: str = None
+    questions: List[str] = None
+    move_next: bool = None
+    confidence_level: float = None
+    final_prompt: str = None
+    research_parameters: dict = None
+
+# Research Desk
+class ResearchDeskRequest(BaseModel):
+    prompt: str
+    model: str
+
+class ResearchDeskContextAgentRequest(BaseModel):
+    prompt: str
+    model: str
+    answers: Optional[str] = None
+    research_scope: str
+    user_files: Optional[List] = None
+
+class EditDocRequest(BaseModel):
+    prompt: str
+    model: str
+
+class ResearchDesk(BaseModel):
     id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-    workspace_id: str
-    type: str
-    title: str
-    content: str
+    workspace_id: Optional[str] = None
+    state: Optional[Literal["initial", "context_agent", "planner_agnet", "approve_plan", "explorer_agent", "complete"]] = "initial" 
+    title: Optional[str] = None
+    documents: Optional[dict] = None
+    context_agent: Optional[ContextAgent] = None
+    planner_agent: Optional[dict] = None
+    messages: List[Message] = Field(default_factory=list) # chat messages
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

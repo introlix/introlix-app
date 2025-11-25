@@ -7,39 +7,18 @@ import { DropdownMenu, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, D
 import { DropdownMenuContent } from "@radix-ui/react-dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { useState } from "react";
+import { useAllWorkspacesItems } from "@/hooks/use-chat";
 
 const navigation = [
     { name: "Workspaces", href: "/workspaces", icon: FolderOpen },
     { name: "Resources", href: "/resources", icon: Globe },
 ];
 
-const recentOpens = [
-    { id: "1", name: "Project Alpha", href: "/workspaces/alpha" },
-    { id: "2", name: "Market Research", href: "/workspaces/market-research" },
-    { id: "3", name: "Design Docs", href: "/workspaces/design-docs" },
-    { id: "4", name: "User Feedback", href: "/workspaces/user-feedback" },
-    { id: "5", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
-    { id: "6", name: "Project Alpha", href: "/workspaces/alpha" },
-    { id: "7", name: "Market Research", href: "/workspaces/market-research" },
-    { id: "8", name: "Design Docs", href: "/workspaces/design-docs" },
-    { id: "9", name: "User Feedback", href: "/workspaces/user-feedback" },
-    { id: "10", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
-    { id: "11", name: "Project Alpha", href: "/workspaces/alpha" },
-    { id: "12", name: "Market Research", href: "/workspaces/market-research" },
-    { id: "13", name: "Design Docs", href: "/workspaces/design-docs" },
-    { id: "14", name: "User Feedback", href: "/workspaces/user-feedback" },
-    { id: "15", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
-    { id: "16", name: "Project Alpha", href: "/workspaces/alpha" },
-    { id: "17", name: "Market Research", href: "/workspaces/market-research" },
-    { id: "18", name: "Design Docs", href: "/workspaces/design-docs" },
-    { id: "19", name: "User Feedback", href: "/workspaces/user-feedback" },
-    { id: "20", name: "Sprint Planning", href: "/workspaces/sprint-planning" },
-]
-
 const newChat = () => { }
 
 export function AppSidebar() {
     const { isMobile } = useSidebar();
+    const {data: recentOpens} = useAllWorkspacesItems(1, 10);
 
     const [theme, setTheme] = useState<"light" | "dark">("light");
 
@@ -100,11 +79,14 @@ export function AppSidebar() {
                     <SidebarGroupLabel>Recents</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu>
-                            {recentOpens.map((item) => (
+                            {recentOpens?.items.length === 0 && (
+                                <div className="text-sm text-muted-foreground px-3">No recent Items</div>
+                            )}
+                            {recentOpens?.items.map((item) => (
                                 <SidebarMenuItem key={item.id}>
-                                    <Link href={item.href}>
-                                        <SidebarMenuButton asChild tooltip={item.name}>
-                                            <span className="group-data-[collapsible=icon]:hidden">{item.name}</span>
+                                    <Link href={`/workspaces/${item.workspace_id}/${item.type}/${item.id}`}>
+                                        <SidebarMenuButton asChild tooltip={item.title || "Untitled"} className="cursor-pointer">
+                                            <span className="group-data-[collapsible=icon]:hidden">{item.title.length > 30 ? item.title.slice(0, 30) + "..." : item.title || "Untitled"}</span>
                                         </SidebarMenuButton>
                                     </Link>
                                 </SidebarMenuItem>

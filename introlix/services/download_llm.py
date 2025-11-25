@@ -1,12 +1,67 @@
+"""
+Hugging Face Model Download Service
+
+This module provides functionality for downloading large language models from Hugging Face
+repositories with support for resume capability and progress tracking.
+
+Features:
+---------
+- Streaming downloads with progress updates
+- Resume capability for interrupted downloads
+- JSON-formatted progress reporting
+- Automatic directory creation
+- File size validation
+
+The download function yields JSON progress updates that can be streamed to clients
+for real-time download status monitoring.
+"""
+
 import os
 import requests
 import json
 from introlix.config import HF_MODEL_URL, MODEL_SAVE_DIR
 
 
+
 def download_hf_model(username: str, repo_id: str, branch_name: str, model_name: str, save_name: str = None):
     """
-    Downloading model from huggingface.
+    Download a model from Hugging Face with resume capability and progress tracking.
+
+    This function downloads GGUF model files from Hugging Face repositories with support
+    for resuming interrupted downloads. It yields JSON-formatted progress updates that
+    can be streamed to clients.
+
+    Args:
+        username (str): Hugging Face username or organization name.
+        repo_id (str): Repository identifier on Hugging Face.
+        branch_name (str): Branch name (usually "main").
+        model_name (str): Name of the model file to download.
+        save_name (str, optional): Custom name to save the file as. If None, uses model_name.
+
+    Yields:
+        str: JSON-formatted progress updates containing:
+            - status (str): "downloading", "downloaded", or "failed"
+            - progress (float): Download progress percentage (0-100)
+            - downloaded_bytes (int): Number of bytes downloaded
+            - total_bytes (int): Total file size in bytes
+            - message (str): Human-readable status message
+
+    Example:
+        >>> for update in download_hf_model(
+        ...     username="unsloth",
+        ...     repo_id="Qwen3-4B-GGUF",
+        ...     branch_name="main",
+        ...     model_name="model.gguf"
+        ... ):
+        ...     print(update)
+        {"status": "downloading", "progress": 25.5, ...}
+        {"status": "downloading", "progress": 50.0, ...}
+        {"status": "downloaded", "progress": 100, ...}
+
+    Note:
+        - Downloads are saved to MODEL_SAVE_DIR configured in settings
+        - Supports HTTP 206 (Partial Content) for resume capability
+        - Uses 8KB chunks for efficient memory usage
     """
     MODEL_URL = HF_MODEL_URL.format(
         username=username,
@@ -27,7 +82,7 @@ def download_hf_model(username: str, repo_id: str, branch_name: str, model_name:
     if os.path.exists(MODEL_PATH):
         file_size = os.path.getsize(MODEL_PATH)
 
-    # Request headers (for resuming download if file partially exists)
+    # Set up resume headers if file partially exists
     headers = {"Range": f"bytes={file_size}-"} if file_size > 0 else {}
 
     # Start the request
@@ -46,8 +101,8 @@ def download_hf_model(username: str, repo_id: str, branch_name: str, model_name:
             ) + "\n"
             return
 
-        if r.status_code in (200, 206):  # 200 = full download, 206 = partial (resume)
-            mode = "ab" if file_size > 0 else "wb"  # append if resuming
+        if r.status_code in (200, 206):  # 200 = full download, 206 = partial content (resume)
+            mode = "ab" if file_size > 0 else "wb"  # Append mode if resuming, write mode otherwise
             downloaded = file_size
             with open(MODEL_PATH, mode) as f:
                 for chunk in r.iter_content(chunk_size=8192):

@@ -42,10 +42,21 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from introlix.agents.baseclass import AgentInput, AgentOutput, BaseAgent, PromptTemplate
-from introlix.services.LLMState import LLMState
 
 
 class ResearchParameters(BaseModel):
+    """
+    Parameters that guide downstream research agents in their execution.
+
+    These parameters are determined by the ContextAgent based on the user's query
+    and help optimize resource allocation and research strategy.
+
+    Attributes:
+        estimated_duration (Literal["short", "medium", "long"]): Expected time to complete the research.
+        complexity_level (Literal["basic", "intermediate", "advanced"]): The sophistication level of the research.
+        required_sources (Literal["academic", "news", "mixed", "technical"]): The type of sources to prioritize.
+        research_depth (Literal["surface", "detailed", "comprehensive"]): How deep the research should go.
+    """
     estimated_duration: Literal["short", "medium", "long"] = Field(
         description="Estimated research duration"
     )
@@ -61,6 +72,18 @@ class ResearchParameters(BaseModel):
 
 
 class ContextInput(BaseModel):
+    """
+    Input structure for the ContextAgent.
+
+    This model validates and structures the information provided to the ContextAgent,
+    including the user's query, any previous answers, uploaded files, and research scope.
+
+    Attributes:
+        query (str): The original user query or research question.
+        answer_to_questions (Optional[str]): User's responses to previous clarification questions.
+        user_files (Optional[List[Dict]]): Metadata and content summaries from uploaded files.
+        research_scope (str): The desired scope of research (narrow, medium, or comprehensive).
+    """
     query: str = Field(description="Original user query")
     answer_to_questions: Optional[str] = Field(
         default=None, description="User's answers to previous clarification questions"
@@ -75,6 +98,20 @@ class ContextInput(BaseModel):
 
 
 class ContextOutput(BaseModel):
+    """
+    Output structure from the ContextAgent.
+
+    This model represents the ContextAgent's decision about whether it has enough
+    information to proceed with research, along with any clarification questions
+    and the enriched research prompt.
+
+    Attributes:
+        questions (List[str]): Clarification questions to ask the user (max 5 to avoid fatigue).
+        move_next (bool): Whether the agent has enough context to proceed to the next stage.
+        confidence_level (float): A score from 0.0 to 1.0 indicating certainty (>= 0.7 to proceed).
+        final_prompt (str): A comprehensive, enriched prompt consolidating all user input.
+        research_parameters (ResearchParameters): Parameters guiding downstream agent behavior.
+    """
     questions: List[str] = Field(
         description="List of clarification questions to ask the user"
     )
@@ -93,12 +130,52 @@ class ContextOutput(BaseModel):
 
 
 class ContextAgent(BaseAgent):
-    def __init__(self, config: AgentInput, model, max_iterations: int = 3):
+    """
+    The Context Agent is the gateway to the Introlix Platform.
+
+    This agent is responsible for gathering all necessary information from the user
+    before research begins. It expands vague or incomplete queries into detailed,
+    well-scoped prompts by asking clarification questions when required.
+
+    The ContextAgent's output directly controls the entire research workflow:
+    - Planner Agent (creates research plans)
+    - Explorer Agents (web searches in parallel)
+    - Verifier Agent (fact-checking)
+    - Knowledge Gap Agent (quality control)
+    - Researcher Agent (final synthesis)
+
+    Key Responsibilities:
+    1. Assess query specificity and clarity
+    2. Determine research type and scope
+    3. Identify source requirements and quality standards
+    4. Ask clarification questions when confidence is low (< 0.7)
+    5. Generate enriched prompts and research parameters
+
+    Attributes:
+        conversation_history (List[Dict]): History of the conversation for context.
+        row_instruction (str): The detailed system prompt defining agent behavior.
+        logger (logging.Logger): Logger instance for the agent.
+    """
+
+    def __init__(
+        self, config: AgentInput, model, conversation_history, max_iterations: int = 3
+    ):
+        """
+        Initialize the ContextAgent.
+
+        Args:
+            config (AgentInput): Configuration for the agent including tools and output type.
+            model: The LLM model to use for context gathering.
+            conversation_history: Existing conversation history for context.
+            max_iterations (int): Maximum number of clarification iterations. Defaults to 3.
+        """
         super().__init__(config=config, model=model, max_iterations=max_iterations)
         self.logger = logging.getLogger(__name__)
 
+        self.conversation_history = conversation_history
+
         self.row_instruction = f"""
-        You are a Context Agent in the Introlix Research Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
+        You are a Context Agent in the Introlix Platform - a sophisticated multi-agent system for automated research. Your role is CRITICAL as you determine the entire research workflow that follows.
         
         Today's date is {datetime.now().strftime("%Y-%m-%d")}
 
@@ -170,14 +247,66 @@ class ContextAgent(BaseAgent):
         - Ensure the research can be transformed into a full research paper if needed
         - Consider both deep research and quick shallow search capabilities of the platform
 
+        Note: Never make move_next ture if CONFIDENCE_LEVEL < 0.7
+
         ## Quality Standards
         Your output determines the success of the entire research pipeline. Be thorough, precise, and comprehensive in your analysis.
+
+
+        ## EXAMPLE OUTPUT 1: Need More Info
+
+        ```json
+        {{
+        "type": "final",
+        "answer": {{
+            "questions": [
+            "What time period should this research cover?",
+            "Are you looking for academic research or industry applications?"
+            ],
+            "move_next": false,
+            "confidence_level": 0.5,
+            "final_prompt": "User wants research on AI in healthcare but scope needs clarification",
+            "research_parameters": {{
+            "estimated_duration": "medium",
+            "complexity_level": "intermediate",
+            "required_sources": "mixed",
+            "research_depth": "detailed"
+            }}
+        }}
+        }}
+        ```
+
+        NOTE: AT ANY COST DO NOT GIVE OUTPUT OUTSIDE OF THE JSON FORMAT AS I HAVE GIVEN YOU. ALWAYS MAKE SURE TO PRODUCE SAME FORMAT JSON. AND ALSO DO NOT REPEAT ANY QUESTIONS.
         """
 
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
-        """Build context-specific prompt for analysis with proper input validation."""
+        """
+        Legacy method required by BaseAgent but not used in this implementation.
+        
+        The ContextAgent uses `_build_messages_array` instead to support conversation history.
+        """
+        pass
 
-        # Parse and validate input using the ContextInput model
+    def _build_messages_array(
+        self, user_prompt: str, state: Dict[str, Any]
+    ) -> List[Dict]:
+        """
+        Constructs the message array for the LLM, including system prompt and conversation history.
+
+        This method:
+        1. Validates and parses the user input (JSON or plain string)
+        2. Builds the system message with the agent's instructions
+        3. Adds recent conversation history (last 10 messages)
+        4. Formats the current query with all relevant context
+
+        Args:
+            user_prompt (str): The user's input (can be JSON or plain text).
+            state (Dict[str, Any]): Current execution state.
+
+        Returns:
+            List[Dict]: A list of message dictionaries formatted for the LLM.
+        """
+        # Parse and validate input using the ContextInput modelCONFIDENCE_LEVEL
         try:
             if isinstance(user_prompt, str):
                 # Try to parse as JSON first
@@ -195,40 +324,36 @@ class ContextAgent(BaseAgent):
             self.logger.warning(f"Input validation failed: {e}")
             context_input = ContextInput(query=str(user_prompt))
 
-        # Build conversation history for context
-        conversation_history = ""
-        if state["history"]:
-            conversation_history = "\n## Previous Conversation:\n"
-            for i, h in enumerate(state["history"]):
-                # Parse previous outputs to show what agent asked before
-                try:
-                    prev_output = json.loads(h["raw"])
-                    if "answer" in prev_output and "questions" in prev_output["answer"]:
-                        questions = prev_output["answer"]["questions"]
-                        conversation_history += (
-                            f"Step {i+1} - Agent asked: {questions}\n"
-                        )
-                except:
-                    conversation_history += f"Step {i+1}: {h['raw'][:200]}...\n"
+        messages = [{"role": "system", "content": self.row_instruction}]
 
-        # Enhanced instruction that uses the validated input
-        instruction = f"""
-        # Instructions From System
-        {self.row_instruction}
+        # Add conversation history (last 10 messages to manage tokens)
+        recent_history = (
+            self.conversation_history[-10:]
+            if len(self.conversation_history) > 10
+            else self.conversation_history
+        )
 
-        {conversation_history}
+        for msg in recent_history:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role in ["user", "assistant"] and content:
+                messages.append({"role": role, "content": content})
 
+        # Adding more information for good prompt
+        user_prompt_final = []
+
+        current_input = f"""
         # Current Input Analysis
-        - Original Query: {context_input.query}
-        - Research Scope: {context_input.research_scope}
-        - Previous Answers: {context_input.answer_to_questions or "None provided"}
-        - User Files: {len(context_input.user_files) if context_input.user_files else 0} files
+                - Original Query: {context_input.query}
+                - Research Scope: {context_input.research_scope}
+                - Previous Answers: {context_input.answer_to_questions or "None provided"}
+                - User Files: {len(context_input.user_files) if context_input.user_files else 0} files
 
-        CRITICAL INSTRUCTION: 
-        - If user has provided answers to previous questions, INCORPORATE them into your analysis
-        - Do NOT repeat similar questions - build upon what you already know
-        - Only ask NEW clarifying questions if absolutely necessary
-        - If confidence level >= 0.7 based on existing information, set move_next = true
+                CRITICAL INSTRUCTION: 
+                - If user has provided answers to previous questions, INCORPORATE them into your analysis
+                - Do NOT repeat similar questions - build upon what you already know
+                - Only ask NEW clarifying questions if absolutely necessary
+                - If confidence level >= 0.7 based on existing information, set move_next = true
         """
 
         # Build user prompt sections using validated input
@@ -248,28 +373,113 @@ class ContextAgent(BaseAgent):
                 f"USER_FILES: {json.dumps(context_input.user_files, indent=2)}"
             )
 
+        user_prompt_final = "\n".join(current_input)
         user_prompt_final = "\n".join(sections)
 
-        return PromptTemplate(user_prompt=user_prompt_final, system_prompt=instruction)
+        messages.append({"role": "user", "content": "\n".join(user_prompt_final)})
+
+        return messages
 
     async def _parse_output(self, raw_output: str) -> Any:
-        """Parse LLM output and validate structure."""
-        try:
-            parsed_output = json.loads(raw_output)
-            if parsed_output.get("type") == "final" and "answer" in parsed_output:
-                answer = parsed_output["answer"]
-                if isinstance(answer, str):
-                    answer = json.loads(answer)
-                return ContextOutput(**answer)
-        except (json.JSONDecodeError, ValueError):
-            pass
+        """
+        Parses and validates the raw LLM output into a ContextOutput object.
 
+        This method handles multiple output formats:
+        1. Nested structure: {"type": "final", "answer": {...}}
+        2. Direct ContextOutput structure
+        3. JSON wrapped in markdown code fences
+
+        The parser uses regex to extract JSON objects and validates them against
+        the ContextOutput schema. If parsing fails, it returns a fallback output
+        with confidence_level=0.0 and move_next=false.
+
+        Args:
+            raw_output (str): The raw string response from the LLM.
+
+        Returns:
+            ContextOutput: A validated ContextOutput object.
+        """
+        
+        # Strip markdown code fences if present
+        cleaned_output = raw_output.strip()
+        
+        # Try to extract JSON from the response
+        # Look for JSON objects in the text
+        import re
+        
+        # Pattern to find JSON objects
+        json_pattern = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}'
+        
+        # Find all potential JSON objects
+        json_matches = re.findall(json_pattern, cleaned_output, re.DOTALL)
+        
+        # Try to parse each match
+        for json_str in reversed(json_matches):  # Start from the end (likely the final output)
+            try:
+                parsed = json.loads(json_str)
+                
+                # Check if this is the answer structure we want
+                if isinstance(parsed, dict):
+                    # Case 1: {"type": "final", "answer": {...}}
+                    if parsed.get("type") == "final" and "answer" in parsed:
+                        answer = parsed["answer"]
+                        
+                        # If answer is a string, try to parse it
+                        if isinstance(answer, str):
+                            try:
+                                answer = json.loads(answer)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        if isinstance(answer, dict):
+                            # Validate it has required fields
+                            if all(key in answer for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                                return ContextOutput(**answer)
+                    
+                    # Case 2: Direct ContextOutput structure
+                    if all(key in parsed for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                        return ContextOutput(**parsed)
+            
+            except (json.JSONDecodeError, ValueError, TypeError):
+                continue
+        
+        # If no valid JSON found, try the original approach with code fence stripping
+        if cleaned_output.startswith("```"):
+            lines = cleaned_output.split("\n")
+            # Remove opening fence
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            # Remove closing fence
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned_output = "\n".join(lines).strip()
+            
+            try:
+                parsed_output = json.loads(cleaned_output)
+                if parsed_output.get("type") == "final" and "answer" in parsed_output:
+                    answer = parsed_output["answer"]
+                    
+                    if isinstance(answer, str):
+                        try:
+                            answer = json.loads(answer)
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    if isinstance(answer, dict):
+                        return ContextOutput(**answer)
+                
+                if all(key in parsed_output for key in ["questions", "move_next", "confidence_level", "final_prompt"]):
+                    return ContextOutput(**parsed_output)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        
         # Fallback for malformed output
+        self.logger.warning(f"Could not parse valid ContextOutput, using fallback. Raw output length: {len(raw_output)}")
         return ContextOutput(
             questions=[],
-            move_next=True,
-            confidence_level=0.8,
-            final_prompt=raw_output,
+            move_next=False,
+            confidence_level=0.0,
+            final_prompt="Failed to parse LLM output. Please try again.",
             research_parameters=ResearchParameters(
                 estimated_duration="medium",
                 complexity_level="intermediate",
@@ -279,7 +489,18 @@ class ContextAgent(BaseAgent):
         )
 
     def _decide_action(self, parsed_output: Any) -> Dict[str, Any]:
-        """Override the base class method to handle ContextOutput specifically."""
+        """
+        Determines the next action based on the parsed output.
+
+        For ContextOutput objects, this always returns a 'final' action type,
+        as the ContextAgent doesn't use tools or delegate to other agents.
+
+        Args:
+            parsed_output (Any): The validated output from `_parse_output`.
+
+        Returns:
+            Dict[str, Any]: A dictionary with 'type' and 'answer' keys.
+        """
 
         # If it's a ContextOutput object, always treat it as final
         if isinstance(parsed_output, ContextOutput):
@@ -288,6 +509,85 @@ class ContextAgent(BaseAgent):
         # Fallback to parent implementation for other types
         return super()._decide_action(parsed_output)
 
+    async def arun(self, user_prompt: str):
+        """
+        Executes a single run of the ContextAgent.
+
+        This method:
+        1. Builds the message array from the user prompt
+        2. Calls the LLM to analyze the query and determine if more context is needed
+        3. Parses the output into a ContextOutput object
+        4. Returns an AgentOutput with the result
+
+        Args:
+            user_prompt (str): The user's input (can be JSON string or plain text).
+
+        Returns:
+            AgentOutput: The result containing a ContextOutput object.
+        """
+        state = {"history": [], "tool_results": {}}
+
+        messages = self._build_messages_array(user_prompt, state)
+
+        raw_output = await self._call_llm_with_messages(messages=messages, stream=False)
+
+        try:
+            parsed_output = await self._parse_output(raw_output)
+        except Exception as e:
+            print(f"Parse failed: {e}")  # Using print instead of self.logger
+            parsed_output = raw_output
+
+        state["history"].append({"step": 1, "raw": raw_output, "parsed": parsed_output})
+
+        action = self._decide_action(parsed_output)
+
+        if action["type"] == "final":
+            answer = None
+            if isinstance(action, dict) and "answer" in action:
+                answer = action["answer"]
+            elif hasattr(parsed_output, "__dict__"):  # fallback for Pydantic/BaseModel
+                answer = parsed_output
+            else:
+                answer = parsed_output  # fallback to raw output
+
+            return AgentOutput(
+                result=answer,
+                performance={"steps": 1},
+            )
+
+    async def process(
+        self,
+        query: str,
+        answers: Optional[str] = None,
+        research_scope: str = "medium",
+        user_files: Optional[List] = None,
+    ) -> ContextOutput:
+        """
+        High-level convenience method for processing a user query.
+
+        This is the recommended entry point for using the ContextAgent. It handles
+        the creation of the ContextInput object and returns the ContextOutput directly.
+
+        Args:
+            query (str): The user's research query.
+            answers (Optional[str]): Answers to previous clarification questions.
+            research_scope (str): The desired research scope (narrow, medium, or comprehensive).
+            user_files (Optional[List]): List of uploaded file metadata.
+
+        Returns:
+            ContextOutput: The agent's decision including questions, confidence, and enriched prompt.
+        """
+        context_input = ContextInput(
+            query=query,
+            answer_to_questions=answers,
+            research_scope=research_scope,
+            user_files=user_files,
+        )
+
+        result = await self.arun(json.dumps(context_input.model_dump()))
+        return result.result
+
+
 # ========== Testing the agent ==========
 async def run_context_agent():
     config = AgentInput(
@@ -295,10 +595,13 @@ async def run_context_agent():
         description="Context gathering before research",
         output_type=ContextOutput,
     )
-    agent = ContextAgent(config=config, model="qwen/qwen3-30b-a3b:free")
+    agent = ContextAgent(config=config, model="moonshotai/kimi-k2:free")
 
     # Initial query
-    user_query = {"query": "The Evolution of Large Language Models (2018–2025): Technical Advances, Ethical Challenges, and Industry Impacts", "research_scope": "medium"}
+    user_query = {
+        "query": "The Evolution of Large Language Models (2018–2025): Technical Advances, Ethical Challenges, and Industry Impacts",
+        "research_scope": "medium",
+    }
 
     iteration = 0
     max_question_iterations = 5

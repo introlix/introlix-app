@@ -1,3 +1,19 @@
+"""
+Writer Agent Module
+
+This module provides the WriterAgent class, which transforms synthesized research
+outputs into polished, well-structured written documents. Key capabilities include:
+
+- Transform research data into coherent narratives
+- Adapt writing style to target audience (academic, professional, general)
+- Ensure proper citation of all sources
+- Create structured documents with logical flow
+- Support multiple output formats (research papers, summaries, reports)
+
+The WriterAgent is the final step in the research pipeline, taking verified
+information and creating publication-ready documents.
+"""
+
 import asyncio
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -5,6 +21,14 @@ from introlix.agents.base_agent import Agent
 from introlix.agents.baseclass import AgentInput
 
 class WriterAgentOutput(BaseModel):
+    """
+    Output structure from the Writer Agent's content creation process.
+
+    Attributes:
+        content (str): The final written document content.
+        format (str): The format of the output (e.g., 'summary', 'detailed report', 'research paper').
+        citations (list): List of all sources cited in the written content.
+    """
     content: str = Field(description="The final written content")
     format: str = Field(description="The format of the output, e.g., 'summary', 'detailed report'")
     citations: list = Field(description="List of all sources cited in the written content")
@@ -40,8 +64,38 @@ Your response should be in the following JSON format:
 Make sure to only respond with the JSON format specified above and nothing else.
 """
 
-class ResearcherAgent:
+class WriterAgent:
+    """
+    The Writer Agent transforms synthesized research into polished written documents.
+
+    This agent takes verified research outputs and creates well-structured, coherent,
+    and engaging documents tailored to specific audiences and purposes. It ensures
+    proper citation, clarity, and appropriate writing style.
+
+    Key Responsibilities:
+    1. Transform research outputs into structured documents
+    2. Ensure proper citation of all sources
+    3. Adapt writing style to target audience
+    4. Create logical content flow and organization
+    5. Maintain clarity and readability
+
+    Output Formats:
+    - Academic research papers
+    - Executive summaries
+    - Detailed reports
+    - General audience articles
+    - Custom formats as requested
+
+    Attributes:
+        INSTRUCTIONS (str): The system prompt defining agent behavior.
+        agent_config (AgentInput): Configuration for the agent.
+        writer_agent (Agent): The underlying LLM agent for content creation.
+    """
+
     def __init__(self):
+        """
+        Initializes the WriterAgent with default configuration.
+        """
         self.INSTRUCTIONS = INSTRUCTIONS
         
         self.agent_config = AgentInput(
@@ -81,7 +135,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def main():
-        writer_agent = ResearcherAgent()
+        writer_agent = WriterAgent()
         enriched_prompt = "The impact of climate change on coastal cities. Make it in research paper"
         research_outputs = [
             '{"result": "Climate change is causing sea levels to rise, which threatens coastal cities with flooding and erosion.", "references": ["Source A", "Source B"]}',

@@ -1,3 +1,26 @@
+"""
+Web Crawler Tool Module
+
+This module provides asynchronous web scraping functionality for extracting content
+from web pages and PDF documents. It uses trafilatura for main content extraction
+and pdfplumber for PDF processing.
+
+Key Features:
+-------------
+- Asynchronous HTTP requests with aiohttp
+- HTML content extraction with trafilatura
+- PDF text extraction with pdfplumber
+- Automatic content type detection
+- Link extraction and filtering (optional)
+- Robust error handling
+- SSL/TLS support
+
+Supported Content Types:
+-----------------------
+- HTML web pages
+- PDF documents
+"""
+
 import aiohttp
 import asyncio
 import ssl
@@ -12,18 +35,42 @@ import pdfplumber
 from io import BytesIO
 
 class ScrapeResult(BaseModel):
+    """
+    Structured result from web scraping operation.
+
+    Attributes:
+        url (str): The URL of the scraped webpage or PDF.
+        text (str): The full extracted text content.
+        title (str): The title of the webpage or PDF.
+        description (str): A short description or summary of the content.
+    """
     url: str = Field(description="The URL of the webpage")
     text: str = Field(description="The full text content of the webpage")
     title: str = Field(description="The title of the webpage")
     description: str = Field(description="A short description of the webpage")
-    # links: list = Field(
-    #     description="List of links from the page that could be useful as it could be references, citations, or linked sources"
-    # )
 
 ssl_context = ssl.create_default_context()
 
 async def extract_links(html: str, base_url: str) -> List[dict]:
-    """Extract and filter useful links from the page"""
+    """
+    Extract and filter useful links from an HTML page.
+
+    This function parses HTML content and extracts meaningful links while filtering out
+    common non-content links (login, signup, media files, etc.).
+
+    Args:
+        html (str): The HTML content to parse.
+        base_url (str): The base URL for resolving relative links.
+
+    Returns:
+        List[dict]: List of link dictionaries containing:
+            - url (str): The absolute URL
+            - anchor (str): The link text
+
+    Note:
+        Filters out links to: login/signup pages, categories, tags, media files,
+        and links with only single-word anchor text.
+    """
     soup = BeautifulSoup(html, "html.parser")
     links = []
 
@@ -55,7 +102,25 @@ async def extract_links(html: str, base_url: str) -> List[dict]:
     return links
 
 async def fetch_page(url: str) -> tuple[str, bool]:
-    """Fetch HTML content from a URL"""
+    """
+    Fetch content from a URL (HTML or PDF).
+
+    This function makes an asynchronous HTTP GET request with browser-like headers
+    to fetch page content. It automatically detects PDF content.
+
+    Args:
+        url (str): The URL to fetch.
+
+    Returns:
+        tuple[str, bool]: A tuple containing:
+            - Content (str or bytes): HTML text or PDF bytes
+            - is_pdf (bool): True if content is PDF, False otherwise
+
+    Note:
+        - Uses 5-second timeout
+        - Returns empty string and False on errors
+        - Includes realistic browser headers to avoid blocking
+    """
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -80,18 +145,37 @@ async def fetch_page(url: str) -> tuple[str, bool]:
                     return await response.text(), is_pdf
                 else:
                     print(f"HTTP {response.status} for {url}")
-                    return "", False  # Return empty tuple for non-200
+                    return "", False
         except Exception as e:
             print(f"Error fetching {url}: {str(e)}")
-            return "", False  # 
+            return "", False
 
 async def extract_pdf_text(pdf_content: bytes) -> tuple[str, str, str]:
-    """Extract text, title, and description from a PDF"""
+    """
+    Extract text, title, and description from a PDF document.
+
+    This function processes PDF bytes and extracts:
+    - Full text from all pages
+    - Title from metadata or first page
+    - Description from first few lines
+
+    Args:
+        pdf_content (bytes): The PDF file content as bytes.
+
+    Returns:
+        tuple[str, str, str]: A tuple containing:
+            - text (str): Full extracted text from all pages
+            - title (str): Document title
+            - description (str): First 200 chars from opening lines
+
+    Note:
+        Returns empty strings on extraction errors.
+    """
     try:
         with pdfplumber.open(BytesIO(pdf_content)) as pdf:
             # Extract text from all pages
             text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-            # Attempt to extract title from metadata or first page
+            # Extract title from metadata or first page
             title = pdf.metadata.get("Title", "") or ""
             if not title and pdf.pages:
                 first_page_text = pdf.pages[0].extract_text() or ""
@@ -139,16 +223,12 @@ async def web_crawler(url: str) -> Union[ScrapeResult, str]:
         # PDFs typically don't have extractable links in this context
         links = []
     else:
-        # For web pages
-        # Fetching links from the site
-        # try:
-        #     links = await extract_links(html_content, url)
-        # except Exception as e:
-        #     pass
+        # For HTML web pages
+        # Link extraction is currently disabled
+        # links = await extract_links(html_content, url)
 
-        # Getting main content
+        # Extract main content using trafilatura
         title, description, text = "", "", ""
-        tf_ext_time = 0.0
  
         data = trafilatura.extract(html_content, url=url, output_format="json", with_metadata=True)
         if data:

@@ -1,3 +1,26 @@
+"""
+Chat Routes Module
+
+This module provides REST API endpoints for managing chat conversations within workspaces.
+It handles chat creation, message streaming, chat retrieval, and deletion.
+
+Endpoints:
+----------
+- POST /workspace/{workspace_id}/chat/new - Create a new chat
+- POST /workspace/{workspace_id}/chat/{chat_id}/ - Send a message and get streaming response
+- GET /workspace/{workspace_id}/chat/{chat_id}/ - Retrieve chat history
+- DELETE /workspace/{workspace_id}/chat/{chat_id}/ - Delete a chat
+
+Features:
+---------
+- Automatic title generation for new chats
+- Streaming responses for real-time user experience
+- Conversation history persistence
+- Integration with ChatAgent for intelligent responses
+- Optional internet search capability
+- Model selection (auto or specific model)
+"""
+
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -5,25 +28,86 @@ from introlix.models import ChatRequest
 from introlix.agents.chat_agent import ChatAgent
 from introlix.models import WorkspaceChat, Message
 from introlix.database import db, serialize_doc, validate_object_id
-from introlix.services.LLMState import LLMState
+from introlix.config import AUTO_MODEL
+from introlix.utils.title_gen import generate_title
 
 chat_router = APIRouter(prefix='/workspace/{workspace_id}/chat', tags=['chat'])
-llm_state = LLMState()
 
 @chat_router.post('/new')
 async def create_chat(workspace_id: str, request: WorkspaceChat):
+    """
+    Create a new chat conversation in a workspace.
+
+    This endpoint initializes a new chat session within the specified workspace.
+    The chat starts with an empty message history and can be used for subsequent
+    message exchanges.
+
+    Args:
+        workspace_id (str): The unique identifier of the workspace.
+        request (WorkspaceChat): The chat creation request containing initial chat data.
+
+    Returns:
+        dict: A dictionary containing:
+            - message (str): Success message
+            - _id (str): The unique identifier of the created chat
+
+    Raises:
+        HTTPException: 404 if the workspace is not found.
+
+    Example:
+        POST /workspace/123/chat/new
+        Body: {"title": "My Chat"}
+        Response: {"message": "Chat created", "_id": "abc123"}
+    """
     workspace = await db.workspaces.find_one({"_id": validate_object_id(workspace_id)})
 
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     request.workspace_id = workspace_id
     item_dict = request.model_dump()
-    result = await db.workspace_items.insert_one(item_dict)
+    result = await db.chats.insert_one(item_dict)
     return {"message": "Chat created", "_id": str(result.inserted_id)}
 
 @chat_router.post('/{chat_id}/')
 async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
-    chat = await db.workspace_items.find_one({"_id": validate_object_id(chat_id)})
+    """
+    Send a message to a chat and receive a streaming response.
+
+    This endpoint handles the main chat interaction:
+    1. Validates the chat exists
+    2. Generates a title if this is the first message
+    3. Saves the user message to the database
+    4. Initializes the ChatAgent with conversation history
+    5. Streams the AI response back to the client
+    6. Saves the assistant's response to the database
+
+    Args:
+        workspace_id (str): The unique identifier of the workspace.
+        chat_id (str): The unique identifier of the chat.
+        request (ChatRequest): The chat request containing:
+            - prompt (str): The user's message
+            - model (str): The model to use ("auto" or specific model name)
+            - search (bool): Whether to enable internet search
+
+    Returns:
+        StreamingResponse: A streaming response containing the AI's reply in real-time.
+
+    Raises:
+        HTTPException: 404 if the chat is not found.
+
+    Features:
+        - Automatic title generation for new chats
+        - Conversation history persistence
+        - Real-time streaming responses
+        - Optional internet search integration
+        - Automatic model selection when "auto" is specified
+
+    Example:
+        POST /workspace/123/chat/abc/
+        Body: {"prompt": "Hello", "model": "auto", "search": false}
+        Response: Streaming text response from the AI
+    """
+    chat = await db.chats.find_one({"_id": validate_object_id(chat_id)})
 
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -32,29 +116,21 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
 
     if not title:
         # Title is missing, set it
-        messages = [
-            {"role": "system", "content": "You are a title generator for chatbot. Your task is to generate best by seeing user prompt. Don't response with any exta token. Just give a simple title."},
-            {"role": "user", "content": request.prompt}
-        ]
-        response = await llm_state.get_open_router(
-            model_name="qwen/qwen3-4b:free", 
-            messages=messages,
-            stream=False
-        )
-        output = response.json()
-        
-        try:
-            new_title = output["choices"][0]["message"]["content"]
-        except:
-            new_title = output
+        new_title = await generate_title(request.prompt)
 
-        await db.workspace_items.update_one(
+        await db.chats.update_one(
             {"_id": chat["_id"]},
             {"$set": {"title": new_title}}
         )
+
+        # Update the workspace's updated_at field
+        await db.workspaces.update_one(
+            {"_id": validate_object_id(workspace_id)},
+            {"$set": {"updated_at": datetime.now()}}
+        )
     
     if request.model == "auto":
-        model = "meta-llama/llama-3.3-70b-instruct:free"
+        model = AUTO_MODEL
     else:
         model = request.model
 
@@ -69,7 +145,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
     )
 
     # Add user message to database
-    await db.workspace_items.update_one(
+    await db.chats.update_one(
         {"_id": chat["_id"]},
         {
             "$push": {"messages": user_message.model_dump()},
@@ -105,7 +181,7 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             model=model
         )
 
-        await db.workspace_items.update_one(
+        await db.chats.update_one(
             {"_id": chat["_id"]},
             {
                 "$push": {"messages": assistant_message.model_dump()},
@@ -115,10 +191,59 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
             
     return StreamingResponse(stream(), media_type="text/plain")
 
+@chat_router.get('/{chat_id}/')
+async def get_chat(chat_id: str):
+    """
+    Retrieve all messages from a chat conversation.
+
+    This endpoint fetches the complete chat history including all messages,
+    metadata, and timestamps.
+
+    Args:
+        chat_id (str): The unique identifier of the chat.
+
+    Returns:
+        dict: The serialized chat document containing:
+            - _id (str): Chat identifier
+            - workspace_id (str): Associated workspace
+            - title (str): Chat title
+            - messages (list): Array of message objects
+            - created_at (datetime): Chat creation timestamp
+            - updated_at (datetime): Last update timestamp
+        str: "No Chat Found" if the chat doesn't exist
+
+    Example:
+        GET /workspace/123/chat/abc/
+        Response: {"_id": "abc", "title": "My Chat", "messages": [...]}
+    """
+    result = await db.chats.find_one({"_id": validate_object_id(chat_id)})
+
+    if not result:
+        return "No Chat Found"
+    return serialize_doc(result)
 @chat_router.delete('/{chat_id}/')
 async def delete_chat(chat_id: str):
-    """Delete a chat and its history"""
-    result = await db.workspace_items.delete_one({"_id": validate_object_id(chat_id)})
+    """
+    Delete a chat conversation and its entire history.
+
+    This endpoint permanently removes a chat and all its associated messages
+    from the database. This action cannot be undone.
+
+    Args:
+        chat_id (str): The unique identifier of the chat to delete.
+
+    Returns:
+        dict: A dictionary containing:
+            - message (str): Success confirmation message
+
+    Raises:
+        HTTPException: 404 if the chat is not found.
+
+    Example:
+        DELETE /workspace/123/chat/abc/
+        Response: {"message": "Chat deleted successfully"}
+    """
+    result = await db.chats.delete_one({"_id": validate_object_id(chat_id)})
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Chat not found")

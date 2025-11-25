@@ -70,6 +70,16 @@ from introlix.agents.base_agent import Agent
 from introlix.agents.baseclass import AgentInput
 
 class VerifiedResult(BaseModel):
+    """
+    Represents an approved source with verification details.
+
+    Attributes:
+        original_source (dict): The original source object from Explorer Agent.
+        verification_score (float): Score between 0.0 and 1.0 indicating verification confidence.
+        verification_notes (str): Explanation of why the source was approved.
+        fact_check_status (str): Status - 'verified', 'partially_verified', or 'unverified'.
+        cross_reference_count (int): Number of other sources confirming this information.
+    """
     original_source: dict = Field(description="The original source object from Explorer Agent")
     verification_score: float = Field(description="Verification score between 0.0 and 1.0")
     verification_notes: str = Field(description="Reasons for approval")
@@ -77,11 +87,36 @@ class VerifiedResult(BaseModel):
     cross_reference_count: int = Field(description="Number of confirming sources")
 
 class RejectedSource(BaseModel):
+    """
+    Represents a rejected source with rejection details.
+
+    Attributes:
+        original_source (dict): The original source object.
+        rejection_reason (str): Reason - 'low_quality', 'outdated', 'unreliable', or 'duplicate'.
+        rejection_details (str): Specific explanation for why the source was rejected.
+    """
     original_source: dict = Field(description="The original source object")
     rejection_reason: str = Field(description="Rejection reason: low_quality, outdated, unreliable, duplicate")
     rejection_details: str = Field(description="Specific explanation for rejection")
 
 class VerifierAgentOutput(BaseModel):
+    """
+    Complete output from the Verifier Agent's validation process.
+
+    This model contains approved and rejected sources, quality assessments,
+    detected conflicts, and verification metadata.
+
+    Attributes:
+        approved_sources (list[VerifiedResult]): Sources that passed verification.
+        rejected_sources (list[RejectedSource]): Sources that failed verification.
+        overall_confidence (float): Overall confidence in the information set (0.0-1.0).
+        source_diversity (str): Diversity of sources - 'high', 'medium', or 'low'.
+        temporal_coverage (str): Time coverage - 'current', 'recent', 'mixed', or 'outdated'.
+        geographic_representation (list): Regions/countries represented in sources.
+        source_type_distribution (dict): Count of each source type (academic, news, etc.).
+        conflicts_detected (list): Detected conflicts between sources.
+        verification_metadata (dict): Metadata about the verification process.
+    """
     approved_sources: list[VerifiedResult] = Field(description="List of approved sources with verification details")
     rejected_sources: list[RejectedSource] = Field(description="List of rejected sources with reasons")
     overall_confidence: float = Field(description="Overall confidence score between 0.0 and 1.0")
@@ -159,7 +194,38 @@ Make sure to only respond with the JSON format specified above and nothing else.
 """
 
 class VerifierAgent:
+    """
+    The Verifier Agent validates information quality and ensures source credibility.
+
+    This agent acts as a critical quality gate before information reaches the synthesis
+    phase. It evaluates sources based on credibility, relevance, and temporal validity,
+    detects conflicts between sources, and provides comprehensive quality assessments.
+
+    Key Responsibilities:
+    1. Validate source quality and credibility
+    2. Cross-reference facts across multiple sources
+    3. Detect and categorize conflicts in information
+    4. Assess source diversity and temporal coverage
+    5. Flag sources requiring manual expert review
+    6. Provide verification scores and detailed notes
+
+    Verification Criteria:
+    - Source credibility and authority
+    - Publication date relevance
+    - Potential biases
+    - Cross-reference availability
+    - Content quality and depth
+
+    Attributes:
+        INSTRUCTIONS (str): The system prompt defining agent behavior.
+        agent_config (AgentInput): Configuration for the agent.
+        verifier_agent (Agent): The underlying LLM agent for verification.
+    """
+
     def __init__(self):
+        """
+        Initializes the VerifierAgent with default configuration.
+        """
         self.INSTRUCTIONS = INSTRUCTIONS
         
         self.agent_config = AgentInput(
