@@ -62,9 +62,8 @@ The Research Desk guides you through a comprehensive research process:
 
 ### Coming Soon (Beta Features)
 
-- 📄 **Document Formatting**: Export research as blog posts, research papers, or custom formats
-- 📖 **Reference Management**: Automatic citation generation with inline references [1], [2], etc.
-- 📊 **Advanced Analytics**: Research insights and statistics
+- **Document Formatting**: Export research as blog posts, research papers, or custom formats
+- **Reference Management**: Automatic citation generation with inline references [1], [2], etc.
 
 ---
 
