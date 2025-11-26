@@ -30,11 +30,6 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 
-[project.urls]
-Homepage = "https://github.com/introlix/introlix-research"
-Repository = "https://github.com/introlix/introlix-research"
-Documentation = "https://github.com/introlix/introlix-research/tree/main/docs"
-"Bug Tracker" = "https://github.com/introlix/introlix-research/issues"
 dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.5",
@@ -49,11 +44,16 @@ dependencies = [
     "trafilatura>=2.0.0",
     "pdfplumber>=0.11.7",
     "tiktoken>=0.11.0",
-    "pinecone>=7.3.0",
+    "pinecone>=8.0.0",
     "motor>=3.7.1",
     "sentence-transformers>=5.1.2",
-    "huggingface-hub>=1.1.5",
 ]
 [tool.setuptools.packages.find]
 include = ["introlix*"]
 exclude = ["web*"]
+
+[project.urls]
+Homepage = "https://github.com/introlix/introlix"
+Repository = "https://github.com/introlix/introlix"
+Documentation = "https://github.com/introlix/introlix/tree/main/docs"
+"Bug Tracker" = "https://github.com/introlix/introlix/issues"
