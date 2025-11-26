@@ -215,7 +215,7 @@ Documented in README.md:
 ## 📚 Documentation Structure
 
 ```
-introlix-research/
+introlix/
 ├── README.md                    # Main documentation
 ├── .env.example                 # Configuration template
 ├── pyproject.toml               # Package metadata

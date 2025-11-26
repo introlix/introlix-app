@@ -25,14 +25,14 @@ Ensure you have installed:
 - pnpm
 - Git
 - MongoDB
-- Docker (for SearXNG)
+- Docker (optional if setup from code) (for SearXNG)
 
 ### Initial Setup
 
 1. **Fork and clone the repository:**
    ```bash
-   git clone https://github.com/introlix/introlix-research.git
-   cd introlix-research
+   git clone https://github.com/introlix/introlix.git
+   cd introlix
    ```
 
 2. **Set up Python environment:**
@@ -42,27 +42,38 @@ Ensure you have installed:
    pip install -e .
    ```
 
-3. **Install development dependencies:**
+3. **Authenticate with Hugging Face**
+
+   ```bash
+   pip install huggingface_hub
+   # Login to Hugging Face
+   hf auth login
+
+   # Or set token directly
+   export HUGGING_FACE_HUB_TOKEN=your_hf_token_here
+   ```
+
+4. **Install development dependencies:**
    ```bash
    pip install pytest pytest-asyncio black flake8 mypy
    ```
 
-4. **Set up frontend:**
+5. **Set up frontend:**
    ```bash
    cd web
    pnpm install
    cd ..
    ```
 
-5. **Configure environment:**
+6. **Configure environment:**
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
-6. **Start external services:**
+7. **Start external services:**
    ```bash
-   # MongoDB
+   # MongoDB (via docker or use atlas)
    docker run -d --name mongodb -p 27017:27017 mongo:latest
    
    # SearXNG
@@ -137,7 +148,6 @@ web/src/
 ### Branch Strategy
 
 - `main` - Production-ready code
-- `develop` - Integration branch (if used)
 - `feature/feature-name` - New features
 - `fix/bug-name` - Bug fixes
 - `docs/update-name` - Documentation updates
@@ -166,7 +176,7 @@ web/src/
 
 ```bash
 # Add upstream remote (once)
-git remote add upstream https://github.com/introlix/introlix-research.git
+git remote add upstream https://github.com/introlix/introlix.git
 
 # Fetch and merge updates
 git fetch upstream
@@ -741,8 +751,8 @@ Create VS Code snippets for common patterns:
 
 ## Getting Help
 
-- Check [GitHub Issues](https://github.com/introlix/introlix-research/issues)
-- Ask in [GitHub Discussions](https://github.com/introlix/introlix-research/discussions)
+- Check [GitHub Issues](https://github.com/introlix/introlix/issues)
+- Ask in [GitHub Discussions](https://github.com/introlix/introlix/discussions)
 - Read the [Contributing Guide](./CONTRIBUTING.md)
 
 Happy coding! 🚀

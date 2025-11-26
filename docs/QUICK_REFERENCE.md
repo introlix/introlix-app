@@ -8,7 +8,7 @@ Quick links and commands for Introlix.
 - [API Documentation](./API.md) - REST API reference
 - [Architecture](./ARCHITECTURE.md) - System design and components
 - [Development Guide](./DEVELOPMENT.md) - Contributing and development
-- [SearXNG Setup](./SEARXNG_SETUP.md) - Search engine configuration
+- [SearXNG Setup](../README.md#searxng-setup) - Search engine configuration
 - [Contributing](./CONTRIBUTING.md) - How to contribute
 
 ## 🚀 Quick Start Commands
@@ -295,26 +295,9 @@ pnpm update
 ## 🆘 Getting Help
 
 - **Documentation**: Check the docs folder
-- **Issues**: [GitHub Issues](https://github.com/introlix/introlix-research/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/introlix/introlix-research/discussions)
+- **Issues**: [GitHub Issues](https://github.com/introlix/introlix/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/introlix/introlix/discussions)
 - **API Docs**: http://localhost:8000/docs
-
-## 🎯 Roadmap
-
-### Beta Features (Coming Soon)
-
-- [ ] Document formatting (blog post, research paper)
-- [ ] Reference management with inline citations [1], [2]
-- [ ] Export to PDF, DOCX, Markdown
-- [ ] Advanced citation styles (APA, MLA, Chicago)
-
-### Future Features
-
-- [ ] User authentication
-- [ ] Real-time collaboration
-- [ ] File upload and processing
-- [ ] Advanced search (full-text + vector)
-- [ ] Mobile app
 
 ## 📝 License
 

@@ -55,13 +55,13 @@ Before contributing, make sure you have:
 
 2. **Clone your fork:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/introlix-research.git
-   cd introlix-research
+   git clone https://github.com/YOUR_USERNAME/introlix.git
+   cd introlix
    ```
 
 3. **Add upstream remote:**
    ```bash
-   git remote add upstream https://github.com/introlix/introlix-research.git
+   git remote add upstream https://github.com/introlix/introlix.git
    ```
 
 4. **Verify remotes:**
@@ -672,8 +672,8 @@ async def create_chat(
 If you have questions:
 
 1. Check existing [documentation](../README.md)
-2. Search [GitHub Issues](https://github.com/introlix/introlix-research/issues)
-3. Ask in [GitHub Discussions](https://github.com/introlix/introlix-research/discussions)
+2. Search [GitHub Issues](https://github.com/introlix/introlix/issues)
+3. Ask in [GitHub Discussions](https://github.com/introlix/introlix/discussions)
 4. Join our [Discord Community](https://discord.gg/mhyKwfVm)
 5. Reach out to maintainers
 

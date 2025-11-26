@@ -1,6 +1,6 @@
 # Introlix
 
-<div align="center">
+<div align="center" id="introlix">
 
 <!-- Add your logo here -->
 <!-- ![Introlix Logo](./docs/assets/logo.png) -->
@@ -24,14 +24,15 @@ Introlix is an intelligent research platform that combines the power of AI agent
 
 ### Key Capabilities
 
-- **🤖 AI-Powered Research Desk**: Multi-stage AI-guided research workflow with context gathering, planning, and exploration
-- **💬 Intelligent Chat Interface**: Conversational AI with internet search integration for real-time information
-- **📝 AI Document Editor**: Edit and enhance your research documents with AI assistance
-- **🔍 Advanced Search Integration**: Powered by SearXNG for privacy-focused web searches
-- **📚 Knowledge Management**: Vector-based storage with Pinecone for semantic search
-- **🎯 Multi-Agent System**: Specialized agents for different research tasks (Context, Planner, Explorer, Editor, Writer)
+- **AI-Powered Research Desk**: Multi-stage AI-guided research workflow with context gathering, planning, and exploration
+- **Intelligent Chat Interface**: Conversational AI with internet search integration for real-time information
+- **AI Document Editor**: Edit and enhance your research documents with AI assistance
+- **Advanced Search Integration**: Powered by SearXNG for privacy-focused web searches
+- **Knowledge Management**: Vector-based storage with Pinecone for semantic search
+- **Multi-Agent System**: Specialized agents for different research tasks (Context, Planner, Explorer, Editor, Writer)
 
 ---
+<div id="features"></div>
 
 ## ✨ Features
 
@@ -67,6 +68,8 @@ The Research Desk guides you through a comprehensive research process:
 
 ---
 
+<div id="quick-start"></div>
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -83,8 +86,8 @@ The Research Desk guides you through a comprehensive research process:
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/introlix/introlix-research.git
-cd introlix-research
+git clone https://github.com/introlix/introlix.git
+cd introlix
 ```
 
 2. **Set up environment variables**
@@ -99,7 +102,7 @@ Edit `.env` and add your API keys:
 # Required: Choose one LLM provider
 OPEN_ROUTER_KEY=your_openrouter_api_key_here
 # OR
-GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here # From Google AI Studio
 
 # Required: Search engine
 SEARCHXNG_HOST=http://localhost:8080/search
@@ -127,7 +130,7 @@ pip install -e .
 ```bash
 pip install huggingface_hub
 # Login to Hugging Face
-huggingface-cli login
+hf auth login
 
 # Or set token directly
 export HUGGING_FACE_HUB_TOKEN=your_hf_token_here
@@ -182,70 +185,55 @@ elif CLOUD_PROVIDER == "google_ai_studio":
     AUTO_MODEL = "gemini-2.5-flash"
 ```
 
+<div id="searxng-setup"></div>
+
 ### SearXNG Setup
 
 SearXNG is a privacy-respecting metasearch engine. For Introlix to work properly, you need to configure it to return JSON results.
 
-#### Option 1: Docker (Recommended)
+To install SearXNG, see  [Installation guide](https://docs.searxng.org/admin/installation.html).
 
-1. **Create a docker-compose.yml**
-
-```yaml
-version: '3.7'
-
-services:
-  searxng:
-    image: searxng/searxng:latest
-    container_name: searxng
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./searxng:/etc/searxng
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
-    restart: unless-stopped
-```
-
-2. **Create SearXNG configuration**
-
-Create `searxng/settings.yml`:
+Modify `searxng/settings.yml`:
 
 ```yaml
+# SearXNG settings
+
 use_default_settings: true
 
 general:
-  instance_name: "Introlix Search"
-  
-server:
-  secret_key: "change-this-to-a-random-secret-key"
-  limiter: false
-  image_proxy: true
-  
+  debug: false
+  instance_name: "SearXNG"
+
 search:
-  safe_search: 0
-  autocomplete: ""
-  default_lang: "en"
+  safe_search: 2
+  autocomplete: 'duckduckgo'
   formats:
     - html
-    - json  # Important: Enable JSON format
+    - json # Important Enable Json Format
 
-ui:
-  static_use_hash: true
-  default_theme: simple
-  
-engines:
-  - name: google
-    disabled: false
-  - name: duckduckgo
-    disabled: false
-  - name: wikipedia
-    disabled: false
+server:
+  # Is overwritten by ${SEARXNG_SECRET}
+  secret_key: "ultrasecretkey"
+  limiter: true
+  image_proxy: true
+  # public URL of the instance, to ensure correct inbound links. Is overwritten
+  # by ${SEARXNG_BASE_URL}.
+  # base_url: http://example.com/location
+
+valkey:
+  # URL to connect valkey database. Is overwritten by ${SEARXNG_VALKEY_URL}.
+  url: valkey://localhost:6379/0
 ```
+For full template see, [searxng/blob/main/searx/settings.yml](https://github.com/introlix/searxng/blob/main/searx/settings.yml)
 
 3. **Start SearXNG**
 
 ```bash
-docker-compose up -d
+docker-compose up -d # (RECOMMENDED) if your using docker 
+
+OR
+
+python searx/webapp.py
 ```
 
 4. **Verify JSON output**
@@ -257,20 +245,18 @@ curl "http://localhost:8080/search?q=test&format=json"
 
 You should receive a JSON response with search results.
 
-#### Option 2: Manual Installation
-
-See the [detailed SearXNG installation guide](./docs/SEARXNG_SETUP.md) for manual installation instructions.
-
 **Important**: Make sure to enable JSON format in your SearXNG settings as shown above. Introlix requires JSON responses from SearXNG to function properly.
 
 ---
+
+<div id="documentation"></div>
 
 ## 📚 Documentation
 
 - [API Documentation](./docs/API.md) - REST API reference
 - [Architecture](./docs/ARCHITECTURE.md) - System design and components
 - [Development Guide](./docs/DEVELOPMENT.md) - Contributing and development setup
-- [SearXNG Setup](./docs/SEARXNG_SETUP.md) - Detailed search engine configuration
+- [SearXNG Setup](#searxng-setup) - Detailed search engine configuration
 - [Quick Reference](./docs/QUICK_REFERENCE.md) - Common commands and tips
 
 ---
@@ -309,6 +295,8 @@ Introlix is built with a modern, scalable architecture:
 
 ---
 
+<div id="contributing"></div>
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](./docs/CONTRIBUTING.md) for details on:
@@ -338,15 +326,15 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## 📧 Contact & Support
 
-- **Issues**: [GitHub Issues](https://github.com/introlix/introlix-research/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/introlix/introlix-research/discussions)
+- **Issues**: [GitHub Issues](https://github.com/introlix/introlix/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/introlix/introlix/discussions)
 - **Community**: [Join our Discord](https://discord.gg/mhyKwfVm)
 
 ---
 
 <div align="center">
 
-**[⬆ back to top](#introlix-research)**
+**[⬆ back to top](#introlix)**
 
 Made with ❤️ by the Introlix Team
 
