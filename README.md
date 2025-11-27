@@ -221,7 +221,7 @@ For full template see, [searxng/blob/main/searx/settings.yml](https://github.com
 
 Test that JSON format works:
 ```bash
-curl "http://localhost:8080/search?q=test&format=json"
+curl "http://localhost:8888/search?q=test&format=json"
 ```
 
 You should receive a JSON response with search results.
