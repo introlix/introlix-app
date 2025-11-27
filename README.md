@@ -198,45 +198,26 @@ Modify `searxng/settings.yml`:
 ```yaml
 # SearXNG settings
 
-use_default_settings: true
-
 general:
-  debug: false
   instance_name: "SearXNG"
 
 search:
-  safe_search: 2
-  autocomplete: 'duckduckgo'
+  safe_search: 0
+  autocomplete: ""
   formats:
     - html
-    - json # Important Enable Json Format
+    - json   # Important Enable JSON format
 
 server:
-  # Is overwritten by ${SEARXNG_SECRET}
-  secret_key: "ultrasecretkey"
-  limiter: true
-  image_proxy: true
-  # public URL of the instance, to ensure correct inbound links. Is overwritten
-  # by ${SEARXNG_BASE_URL}.
-  # base_url: http://example.com/location
-
-valkey:
-  # URL to connect valkey database. Is overwritten by ${SEARXNG_VALKEY_URL}.
-  url: valkey://localhost:6379/0
+  port: 8888
+  bind_address: "127.0.0.1"
 ```
+
+**Note**: Above code is only for example. Don't replace settings.yml file. Only modify the settings.yml for enabling json.
+
 For full template see, [searxng/blob/main/searx/settings.yml](https://github.com/introlix/searxng/blob/main/searx/settings.yml)
 
-3. **Start SearXNG**
-
-```bash
-docker-compose up -d # (RECOMMENDED) if your using docker 
-
-OR
-
-python searx/webapp.py
-```
-
-4. **Verify JSON output**
+3. **Verify JSON output**
 
 Test that JSON format works:
 ```bash
