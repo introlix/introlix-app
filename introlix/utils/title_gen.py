@@ -12,7 +12,7 @@ async def generate_title(prompt: str) -> str:
     ]
 
     output = await cloud_llm_manager(
-        model_name="gemini-2.0-flash",
+        model_name="gemini-2.5-flash",
         provider=CLOUD_PROVIDER,
         messages=messages,
         stream=False,

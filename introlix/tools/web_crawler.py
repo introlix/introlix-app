@@ -11,7 +11,6 @@ Key Features:
 - HTML content extraction with trafilatura
 - PDF text extraction with pdfplumber
 - Automatic content type detection
-- Link extraction and filtering (optional)
 - Robust error handling
 - SSL/TLS support
 
@@ -22,6 +21,7 @@ Supported Content Types:
 """
 
 import aiohttp
+import random
 import asyncio
 import ssl
 import json
@@ -31,8 +31,17 @@ from urllib.parse import urlparse, urljoin
 from typing import Union, List, Set
 from pydantic import BaseModel, Field
 from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 import pdfplumber
 from io import BytesIO
+
+# Multiple realistic user agents to rotate
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
 
 class ScrapeResult(BaseModel):
     """
@@ -51,104 +60,206 @@ class ScrapeResult(BaseModel):
 
 ssl_context = ssl.create_default_context()
 
-async def extract_links(html: str, base_url: str) -> List[dict]:
+async def fetch_page_aiohttp(url: str) -> tuple[str, bool, int]:
     """
-    Extract and filter useful links from an HTML page.
-
-    This function parses HTML content and extracts meaningful links while filtering out
-    common non-content links (login, signup, media files, etc.).
-
-    Args:
-        html (str): The HTML content to parse.
-        base_url (str): The base URL for resolving relative links.
-
-    Returns:
-        List[dict]: List of link dictionaries containing:
-            - url (str): The absolute URL
-            - anchor (str): The link text
-
-    Note:
-        Filters out links to: login/signup pages, categories, tags, media files,
-        and links with only single-word anchor text.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    links = []
-
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        text = a.get_text(strip=True)
-
-        # Normalize link
-        parsed = urlparse(href)
-        if parsed.netloc:  # absolute
-            if not parsed.scheme:
-                href = f"{urlparse(base_url).scheme}:{href}"
-        else:  # relative
-            href = urljoin(base_url, href)
-
-        # FILTERING RULES
-        if any(
-            re.search(p, href, re.IGNORECASE)
-            for p in [r"#", r"login", r"signup", r"category", r"tag",
-                      r"about", r"contact", r"privacy", r"terms",
-                      r"\.(jpg|png|gif|svg|css|js|mp4|pdf)$"]
-        ):
-            continue
-
-        # Only keep meaningful links
-        if text and len(text.split()) > 1:
-            links.append({"url": href, "anchor": text})
-
-    return links
-
-async def fetch_page(url: str) -> tuple[str, bool]:
-    """
-    Fetch content from a URL (HTML or PDF).
-
-    This function makes an asynchronous HTTP GET request with browser-like headers
-    to fetch page content. It automatically detects PDF content.
+    Fetch content using aiohttp (fast, no JS execution).
 
     Args:
         url (str): The URL to fetch.
-
+    
     Returns:
-        tuple[str, bool]: A tuple containing:
-            - Content (str or bytes): HTML text or PDF bytes
-            - is_pdf (bool): True if content is PDF, False otherwise
-
-    Note:
-        - Uses 5-second timeout
-        - Returns empty string and False on errors
-        - Includes realistic browser headers to avoid blocking
+        tuple: (content, is_pdf, status_code)
     """
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Cache-Control": "max-age=0",
     }
     async with aiohttp.ClientSession(connector=connector, headers=headers) as session:
         try:
-            async with session.get(url, timeout=5) as response:
-                if response.status == 200:
+            async with session.get(url, timeout=10) as response:
+                status = response.status
+                if status == 200:
                     content_type = response.headers.get("Content-Type", "").lower()
                     is_pdf = "application/pdf" in content_type
                     if is_pdf:
-                        return await response.read(), is_pdf
-                    return await response.text(), is_pdf
-                else:
-                    print(f"HTTP {response.status} for {url}")
-                    return "", False
+                        return await response.read(), is_pdf, status
+                    return await response.text(), is_pdf, status
+                return "", False, status
         except Exception as e:
-            print(f"Error fetching {url}: {str(e)}")
-            return "", False
+            print(f"Aiohttp error for {url}: {str(e)}")
+            return "", False, 0
+
+async def inject_stealth_scripts(page):
+    """
+    Inject JavaScript to mask automation and appear as a real browser.
+    """
+    await page.add_init_script("""
+        // Overwrite navigator.webdriver
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+        });
+        
+        // Mock plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5],
+        });
+        
+        // Mock languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en'],
+        });
+        
+        // Mock permissions
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+        );
+        
+        // Mock platform
+        Object.defineProperty(navigator, 'platform', {
+            get: () => 'Win32',
+        });
+        
+        Object.defineProperty(navigator, 'hardwareConcurrency', {
+            get: () => 8,
+        });
+        
+        Object.defineProperty(navigator, 'deviceMemory', {
+            get: () => 8,
+        });
+        
+        // Mock chrome object
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
+        
+        // Mock battery API
+        navigator.getBattery = () => Promise.resolve({
+            charging: true,
+            chargingTime: 0,
+            dischargingTime: Infinity,
+            level: 1.0,
+        });
+        
+        // Mock connection API
+        Object.defineProperty(navigator, 'connection', {
+            get: () => ({
+                effectiveType: '4g',
+                downlink: 10,
+                rtt: 50,
+            }),
+        });
+    """)
+
+
+async def fetch_page_playwright(url: str) -> tuple[str, bool]:
+    """
+    Fetch content using Playwright (handles JS, slower but more reliable).
+    
+    Returns:
+        tuple: (content, is_pdf)
+    """
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--hide-scrollbars',
+                    '--mute-audio',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                ]
+            )
+            # Create context with realistic settings
+            context = await browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent=random.choice(USER_AGENTS),
+                locale='en-US',
+                timezone_id='America/New_York',
+                permissions=['geolocation'],
+                geolocation={'latitude': 40.7128, 'longitude': -74.0060},
+                color_scheme='light',
+                java_script_enabled=True,
+                accept_downloads=False,
+                has_touch=False,
+                is_mobile=False,
+                extra_http_headers={
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Cache-Control': 'max-age=0',
+                }
+            )
+            
+            page = await context.new_page()
+            
+            # Inject stealth scripts
+            await inject_stealth_scripts(page)
+            
+            # Random mouse movements
+            await page.mouse.move(random.randint(50, 150), random.randint(50, 150))
+            await page.mouse.move(random.randint(150, 250), random.randint(150, 250))
+            
+            # Try different wait strategies with ONE navigation
+            response = None
+            for wait_strategy in ['domcontentloaded', 'load']:
+                try:
+                    response = await page.goto(url, wait_until=wait_strategy, timeout=10000)
+                    break  # Success, exit loop
+                except Exception as e:
+                    print(f"Failed with {wait_strategy}: {e}")
+                    continue
+
+            # If navigation failed completely
+            if not response:
+                raise Exception("Failed to load page")
+            
+            # Check if it's a PDF
+            if response and 'application/pdf' in response.headers.get('content-type', '').lower():
+                pdf_content = await response.body()
+                await browser.close()
+                return pdf_content, True
+            
+            # Scroll down
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2);")
+            
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+            
+            # Scroll back up
+            await page.evaluate("window.scrollTo(0, 0);")
+            
+            # Get the fully rendered HTML
+            html_content = await page.content()
+            
+            await browser.close()
+            return html_content, False
+    except Exception as e:
+        print(f"Playwright error for {url}: {str(e)}")
+        return "", False
 
 async def extract_pdf_text(pdf_content: bytes) -> tuple[str, str, str]:
     """
@@ -212,20 +323,29 @@ async def web_crawler(url: str) -> Union[ScrapeResult, str]:
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
 
-    html_content, is_pdf = await fetch_page(url)
+    html_content, is_pdf, _ = await fetch_page_aiohttp(url)
+
+    # Check for common JS framework indicators in HTML
+    js_indicators = [
+        'react', 'vue', 'angular', 'next.js', 
+        '__NEXT_DATA__', 'ng-app', 'v-cloak',
+        'data-reactroot', 'data-react-helmet'
+    ]
+
+    html_lower = html_content.lower()
+    if any(indicator in html_lower for indicator in js_indicators):
+        html_content, is_pdf = await fetch_page_playwright(url)
     if not html_content:
-         return "Error while crawling website"
+        html_content, is_pdf = await fetch_page_playwright(url)
+        if not html_content:
+            return f"Failed to fetch content from {url}"
     
     # For pdf
     if is_pdf:
         # Handle PDF content
         text, title, description = await extract_pdf_text(html_content)
-        # PDFs typically don't have extractable links in this context
-        links = []
     else:
         # For HTML web pages
-        # Link extraction is currently disabled
-        # links = await extract_links(html_content, url)
 
         # Extract main content using trafilatura
         title, description, text = "", "", ""
@@ -242,9 +362,8 @@ async def web_crawler(url: str) -> Union[ScrapeResult, str]:
         text=text,
         title=title,
         description=description,
-        # links=links[:50]
     )
 
 if __name__ == "__main__":
-    result = asyncio.run(web_crawler("https://www.autodesk.com/products/fusion-360/blog/first-computer-around-century-ago/"))
+    result = asyncio.run(web_crawler("https://www.reddit.com/r/Nepal/comments/1nt9bc9/my_thoughts_directly_elected_pm_is_not_a_good/"))
     print(result)

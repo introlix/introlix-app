@@ -47,6 +47,7 @@ dependencies = [
     "pinecone>=8.0.0",
     "motor>=3.7.1",
     "sentence-transformers>=5.1.2",
+    "playwright>=1.56.0",
 ]
 [tool.setuptools.packages.find]
 include = ["introlix*"]

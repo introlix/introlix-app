@@ -210,6 +210,8 @@ class EditAgent(BaseAgent):
         self.current_content = current_content
         self.tools = [{"name": "search", "description": "Search on internet."}]
 
+        self.explorer = ExplorerAgent()
+
         self.sys_prompt = INSTRUCTION.format(tools=self.tools)
         self.conversation_history = conversation_history or []
 
@@ -240,47 +242,11 @@ class EditAgent(BaseAgent):
                 queries = [query]
             elif queries is None:
                 return "Error: No search queries provided"
+        
+
+            results = await self.explorer.run(queries=queries, unique_id=self.unique_id, get_answer=True, max_results=5)
             
-            explorer = ExplorerAgent(
-                queries=queries,
-                unique_id=self.unique_id,
-                get_answer=True,
-                get_multiple_answer=False,
-                max_results=2,
-                model=self.model,
-            )
-
-            results = await explorer.run()
-
-            formatted = []
-            for result in results:
-                try:
-                    if hasattr(result, 'summary'):
-                        # It's an object
-                        formatted.append(
-                            f"Topic: {result.topic}\n"
-                            f"Summary: {result.summary}\n"
-                            f"Sources: {', '.join(result.urls)}\n"
-                            f"Relevance: {result.relevance_score}"
-                        )
-                    elif isinstance(result, dict):
-                        # It's a dict
-                        formatted.append(
-                            f"Topic: {result.get('topic', 'N/A')}\n"
-                            f"Summary: {result.get('summary', 'N/A')}\n"
-                            f"Sources: {', '.join(result.get('urls', []))}\n"
-                            f"Relevance: {result.get('relevance_score', 'N/A')}"
-                        )
-                    else:
-                        # Unknown format, convert to string
-                        formatted.append(f"Result: {str(result)}")
-                except Exception as e:
-                    formatted.append(f"Error processing result: {str(e)}")
-
-            if not formatted:
-                return "No results found"
-            
-            return "\n\n---\n\n".join(formatted)
+            return "\n\n---\n\n".join(str(results))
 
         return [
             Tool(

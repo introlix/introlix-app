@@ -13,8 +13,8 @@ internet search capabilities. The agent can:
 The ChatAgent is designed for interactive chat interfaces where users ask questions
 and the agent provides informed, up-to-date answers by searching the web when needed.
 """
-
 import json
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, AsyncGenerator
 from introlix.agents.baseclass import (
@@ -52,7 +52,7 @@ class AgentDecision(BaseModel):
 
 
 INSTRUCTION = """
-You are Introlix Chat a part of Introlix. You task is to chat with user and answer to users query.
+You are Introlix Chat a part of Introlix. You task is to chat with user and answer to users query. Today's date is {date}. Always provide up-to-date information.
 You have access to internet search using search tool. You have access to mutliple tools:
 {tools}
 
@@ -134,7 +134,9 @@ class ChatAgent(BaseAgent):
         self.unique_id = unique_id
         self.tools = [{"name": "search", "description": "Search on internet."}]
 
-        self.sys_prompt = INSTRUCTION.format(tools=self.tools)
+        self.explorer = ExplorerAgent()
+
+        self.sys_prompt = INSTRUCTION.format(date=datetime.now().strftime("%Y-%m-%d"), tools=self.tools)
         self.conversation_history = conversation_history or []
 
     def _create_tools(self):
@@ -152,47 +154,10 @@ class ChatAgent(BaseAgent):
                 queries = [query]
             elif queries is None:
                 return "Error: No search queries provided"
+
+            results = await self.explorer.run(queries=queries, unique_id=self.unique_id, get_answer=True, max_results=5)
             
-            explorer = ExplorerAgent(
-                queries=queries,
-                unique_id=self.unique_id,
-                get_answer=True,
-                get_multiple_answer=False,
-                max_results=2,
-                model=self.model,
-            )
-
-            results = await explorer.run()
-
-            formatted = []
-            for result in results:
-                try:
-                    if hasattr(result, 'summary'):
-                        # It's an object
-                        formatted.append(
-                            f"Topic: {result.topic}\n"
-                            f"Summary: {result.summary}\n"
-                            f"Sources: {', '.join(result.urls)}\n"
-                            f"Relevance: {result.relevance_score}"
-                        )
-                    elif isinstance(result, dict):
-                        # It's a dict
-                        formatted.append(
-                            f"Topic: {result.get('topic', 'N/A')}\n"
-                            f"Summary: {result.get('summary', 'N/A')}\n"
-                            f"Sources: {', '.join(result.get('urls', []))}\n"
-                            f"Relevance: {result.get('relevance_score', 'N/A')}"
-                        )
-                    else:
-                        # Unknown format, convert to string
-                        formatted.append(f"Result: {str(result)}")
-                except Exception as e:
-                    formatted.append(f"Error processing result: {str(e)}")
-
-            if not formatted:
-                return "No results found"
-            
-            return "\n\n---\n\n".join(formatted)
+            return "\n\n---\n\n".join(str(results))
 
         return [
             Tool(
@@ -430,7 +395,7 @@ class ChatAgent(BaseAgent):
 async def main():
     agent = ChatAgent(unique_id="user1", model="gemini-2.5-flash")
 
-    async for chunk in agent.arun("PM of Nepal"):
+    async for chunk in agent.arun("Current PM of Nepal?"):
         print(chunk, end="", flush=True)
 
 

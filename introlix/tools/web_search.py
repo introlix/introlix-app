@@ -49,9 +49,12 @@ class WebpageSnippet(BaseModel):
         title (str): The title of the webpage.
         description (Optional[str]): A short description or snippet from the page.
     """
+
     url: str = Field(description="The URL of the webpage")
     title: str = Field(description="The title of the webpage")
-    description: Optional[str] = Field(default=None, description="A short description of the webpage")
+    description: Optional[str] = Field(
+        default=None, description="A short description of the webpage"
+    )
 
 
 class SearchResults(BaseModel):
@@ -61,6 +64,7 @@ class SearchResults(BaseModel):
     Attributes:
         results_list (List[WebpageSnippet]): List of relevant search results.
     """
+
     results_list: List[WebpageSnippet]
 
 
@@ -120,7 +124,7 @@ def filter_agent_output_parser(raw_output: str) -> SearchResults:
                 answer = parsed_output
             if isinstance(answer, str):
                 answer = json.loads(answer)
-            
+
             # Ensure all results have required fields, set defaults for missing optional fields
             if "results_list" in answer:
                 normalized_results = []
@@ -128,11 +132,15 @@ def filter_agent_output_parser(raw_output: str) -> SearchResults:
                     normalized_result = {
                         "url": result.get("url", ""),
                         "title": result.get("title", ""),
-                        "description": result.get("description") if "description" in result else None
+                        "description": (
+                            result.get("description")
+                            if "description" in result
+                            else None
+                        ),
                     }
                     normalized_results.append(normalized_result)
                 answer["results_list"] = normalized_results
-            
+
             return SearchResults(**answer)
     except (json.JSONDecodeError, ValueError, ValidationError) as e:
         logger.error(f"Error parsing filter agent output: {e}")
@@ -181,7 +189,7 @@ class SearXNGClient:
         """
         self.host = SEARCHXNG_HOST
         self.model = model
-        
+
         # Request throttling configuration
         self.min_delay = min_delay_between_requests  # Minimum seconds between requests
         self.last_request_time = 0
@@ -218,16 +226,22 @@ class SearXNGClient:
         async with self._lock:
             current_time = time.time()
             time_since_last = current_time - self.last_request_time
-            
+
             if time_since_last < self.min_delay:
                 wait_time = self.min_delay - time_since_last
-                logger.info(f"Throttling: waiting {wait_time:.2f}s before next search...")
+                logger.info(
+                    f"Throttling: waiting {wait_time:.2f}s before next search..."
+                )
                 await asyncio.sleep(wait_time)
-            
+
             self.last_request_time = time.time()
 
     async def search(
-        self, query: str, max_results: int = 5, max_retries: int = 3
+        self,
+        query: str,
+        max_results: int = 5,
+        max_retries: int = 3,
+        filter_result=False,
     ) -> List[WebpageSnippet]:
         """
         Perform web search using SearXNG with AI-powered filtering.
@@ -248,12 +262,12 @@ class SearXNGClient:
             - Automatically throttles requests based on min_delay
             - Returns empty list after max_retries failures
         """
-        
+
         for attempt in range(max_retries):
             try:
                 # Apply throttling before request
                 await self._throttled_request()
-                
+
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
                     "Accept": "application/json",
@@ -265,12 +279,16 @@ class SearXNGClient:
                     "format": "json",
                     "safesearch": "0",
                 }
-                
+
                 connector = aiohttp.TCPConnector(ssl=ssl_context)
                 timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
-                
-                async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-                    async with session.get(self.host, params=params, headers=headers) as response:
+
+                async with aiohttp.ClientSession(
+                    connector=connector, timeout=timeout
+                ) as session:
+                    async with session.get(
+                        self.host, params=params, headers=headers
+                    ) as response:
                         response.raise_for_status()
                         results = await response.json()
 
@@ -283,22 +301,26 @@ class SearXNGClient:
                     for result in results.get("results", [])
                 ]
 
-                return (
-                    await self._filter_results(results_list, query, max_results)
-                    if results_list
-                    else []
-                )
-                
+                if filter_result:
+                    return (
+                        await self._filter_results(results_list, query, max_results)
+                        if results_list
+                        else []
+                    )
+                return results_list[:max_results]
+
             except asyncio.TimeoutError:
-                logger.info(f"Timeout on attempt {attempt + 1}/{max_retries} for query: {query}")
+                logger.info(
+                    f"Timeout on attempt {attempt + 1}/{max_retries} for query: {query}"
+                )
                 if attempt < max_retries - 1:
-                    backoff_time = (2 ** attempt) * 5  # Exponential backoff: 5s, 10s, 20s
+                    backoff_time = (2**attempt) * 5  # Exponential backoff: 5s, 10s, 20s
                     logger.info(f"Backing off for {backoff_time}s...")
                     await asyncio.sleep(backoff_time)
                 else:
                     logger.info(f"Failed after {max_retries} attempts")
                     return []
-                    
+
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}/{max_retries}: {e}")
                 if attempt < max_retries - 1:
@@ -329,7 +351,7 @@ class SearXNGClient:
         serialized_results = [
             result.model_dump() if isinstance(result, WebpageSnippet) else result
             for result in results
-        ]    
+        ]
 
         user_prompt = f"""
         Original search query: {query}

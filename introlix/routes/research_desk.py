@@ -68,6 +68,8 @@ research_desk_router = APIRouter(
     prefix="/workspace/{workspace_id}/research-desk", tags=["research_desk"]
 )
 
+explorer_agent = ExplorerAgent()
+
 @research_desk_router.post("/new")
 async def create_research_desk(workspace_id: str, request: ResearchDesk):
     """
@@ -538,8 +540,7 @@ async def setup_research_desk_explorer_agent(
         raise HTTPException(status_code=400, detail="No keywords found in the plan")
 
     try:
-        explorer_agent = ExplorerAgent(queries=keywords[:20], unique_id=workspace_id, get_answer=False, get_multiple_answer=False, max_results=5, model=model)
-        await explorer_agent.run()
+        await explorer_agent.run(queries=keywords[:20], unique_id=workspace_id, get_answer=False, max_results=5)
     except Exception as e:
         logger.error(f"Explorer agent failed for research desk {desk_id}: {e}")
         raise HTTPException(status_code=500, detail="Explorer agent processing failed")
