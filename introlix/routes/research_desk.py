@@ -627,12 +627,16 @@ async def edit_document(workspace_id: str, desk_id: str, request: EditDocRequest
     else:
         currnet_content = ""
 
+    # Getting final_prompt
+    final_prompt = research_desk.get("context_agent", {}).get("final_prompt", "")
+
     # Initialize EditAgent
     edit_agent = EditAgent(
         unique_id=workspace_id,
         model=model,
         current_content=currnet_content,
-        conversation_history=messages
+        conversation_history=messages,
+        final_prompt=final_prompt
     )
 
     try:
@@ -748,6 +752,12 @@ async def chat(workspace_id: str, desk_id: str, request: ResearchDeskRequest):
 
     # Load chat history from database
     messages = research_desk.get("messages", [])
+
+    # Adding final_prompt from context_agent if it is first message only
+    if not messages:
+        final_prompt = research_desk.get("context_agent", {}).get("final_prompt", "")
+        if final_prompt:
+            request.prompt = f"Context: {final_prompt}\n\n{request.prompt}"
 
     # Adding document content to context if available on user prompt
     current_docs = research_desk.get("documents", {}) or {}
