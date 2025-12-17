@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ChatMessage } from "./chat-message";
 import { Message } from "@/lib/types";
 import { Loader2 } from "lucide-react";
+import { ChatMessage } from "./chat-message";
+import { Skeleton } from "./ui/skeleton";
 
 interface ChatMessagesProps {
   messages: Message[];
@@ -55,13 +56,10 @@ export function ChatMessages({
         )}
 
         {isLoading && !streamingMessage && (
-          <div className="flex gap-3 px-4 py-6 bg-muted/30">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
+          <div className="flex gap-3 px-4 py-6">
             <div className="flex-1 space-y-2">
-              <span className="text-sm font-semibold">Assistant</span>
-              <p className="text-sm text-muted-foreground">Thinking...</p>
+              <Skeleton className="h-4 w-[250px]" />
+              <Skeleton className="h-4 w-[400px]" />
             </div>
           </div>
         )}
