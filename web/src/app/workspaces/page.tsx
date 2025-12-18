@@ -11,6 +11,7 @@ import { NewWorkspaceDialog } from '@/components/new-workspace-dialog';
 import { useDeleteWorkspace } from '@/hooks/use-chat';
 import { NewChatDialog } from '@/components/new-chat-dialog';
 import { NewDeskDialog } from '@/components/new-desk-dialog';
+import { calculateDaysAgo } from '@/lib/utils';
 
 const MAX_RENDERED_ITEMS = 50; // Only keep 50 items in DOM at once
 
@@ -117,8 +118,7 @@ export default function WorkspacePage() {
                         <div>
                           <CardTitle>{item.name}</CardTitle>
                           <div className="flex text-xs text-muted-foreground items-center">
-                            <Dot />
-                            <span>{item.created_at}</span>
+                            <span>Updated {calculateDaysAgo(item.updated_at) == 0 ? "today" : `${calculateDaysAgo(item.updated_at)} days ago`}</span>
                           </div>
                         </div>
                         <div

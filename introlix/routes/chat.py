@@ -21,6 +21,7 @@ Features:
 - Model selection (auto or specific model)
 """
 
+import json
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -170,7 +171,10 @@ async def chat(workspace_id: str, chat_id: str, request: ChatRequest):
     async def stream():
         nonlocal assistant_content
         async for chunk in chat_agent.arun(user_prompt):
-            assistant_content += chunk
+            if json.loads(chunk).get("type") == "answer_chunk":
+                assistant_content += json.loads(chunk).get("content", "")
+            else:
+                assistant_content += chunk
             yield chunk
 
         # After streaming completes, save assistant message

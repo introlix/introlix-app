@@ -8,6 +8,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { useDeleteWorkspace } from "@/hooks/use-chat";
 import { getWorkspaces } from "@/lib/api";
 import { Workspace } from "@/lib/types";
+import { calculateDaysAgo, formatDate } from "@/lib/utils";
 import { ArrowRight, Dot, File, MessageCircle, Microscope, Plus, Search, Trash } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
@@ -95,13 +96,37 @@ export default function Home() {
 
   return (
     <main className="w-[80%] h-[80%] mx-auto mt-6">
+      {/* Button Group Section */}
+      <div className="flex justify-end mb-6">
+        <ButtonGroup className="flex flex-wrap items-center">
+          <Button
+            onClick={() => setOpenNewWorkspaceWindow(true)}
+            variant="outline"
+            className="cursor-pointer"
+          >
+            <Plus /> New Workspace
+          </Button>
+
+          <Button onClick={() => setOpenNewDeskWindow(true)} variant="outline" className="cursor-pointer">
+            <File /> Research Desk
+          </Button>
+
+          <Button
+            onClick={() => setOpenNewChatWindow(true)}
+            variant="outline"
+            className="cursor-pointer"
+          >
+            <MessageCircle /> Chat
+          </Button>
+        </ButtonGroup>
+      </div>
       {/* Recent Workspaces Section */}
       <div className="flex items-center justify-center">
         <div className="w-full p-4 border rounded-2xl shadow-sm bg-card">
           <div className="mb-6 flex items-center justify-between">
             <div className="">
               <h3 className="font-bold text-lg">Recent Workspaces</h3>
-              <span className="text-accent-foreground text-sm">
+              <span className="text-muted-foreground text-sm">
                 Your latest work
               </span>
             </div>
@@ -125,9 +150,8 @@ export default function Home() {
                     <CardContent className="flex items-center justify-between">
                       <div className="">
                         <CardTitle>{item.name}</CardTitle>
-                        <div className="flex text-xs text-muted-foreground items-center">
-                          <Dot />
-                          <span>{item.created_at}</span>
+                        <div className="flex text-xs text-muted-foreground items-center mt-1">
+                          <span>Updated {calculateDaysAgo(item.updated_at) == 0 ? "today" : `${calculateDaysAgo(item.updated_at)} days ago`}</span>
                         </div>
                       </div>
                       <div
@@ -166,37 +190,6 @@ export default function Home() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Button Group Section */}
-      <div className="mt-6 flex items-center justify-center">
-        <ButtonGroup className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() => setOpenNewWorkspaceWindow(true)}
-            variant="outline"
-            className="cursor-pointer"
-          >
-            <Plus className="mr-2" /> New Workspace
-          </Button>
-
-          <Button onClick={() => setOpenNewDeskWindow(true)} variant="outline" className="cursor-pointer">
-            <File className="mr-2" /> Research Desk
-          </Button>
-
-          <Button
-            onClick={() => setOpenNewChatWindow(true)}
-            variant="outline"
-            className="cursor-pointer"
-          >
-            <MessageCircle className="mr-2" /> Chat
-          </Button>
-
-          <Link href={"/chat?tool=search"}>
-            <Button variant="outline" className="cursor-pointer">
-              <Search className="mr-2" /> Search
-            </Button>
-          </Link>
-        </ButtonGroup>
       </div>
 
       {/* Modals */}

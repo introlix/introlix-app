@@ -13,6 +13,7 @@ internet search capabilities. The agent can:
 The ChatAgent is designed for interactive chat interfaces where users ask questions
 and the agent provides informed, up-to-date answers by searching the web when needed.
 """
+
 import json
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -117,7 +118,7 @@ class ChatAgent(BaseAgent):
         Args:
             unique_id (str): Unique identifier for the session/user.
             model (str): The name of the LLM model to use.
-            config (Optional[AgentInput]): Configuration for the agent. If None, a default config 
+            config (Optional[AgentInput]): Configuration for the agent. If None, a default config
                                            with search tools is created.
             max_iterations (int): Maximum number of reasoning/tool-use steps. Defaults to 5.
             conversation_history (Optional[List[Dict]]): Existing conversation history. Defaults to None.
@@ -136,7 +137,9 @@ class ChatAgent(BaseAgent):
 
         self.explorer = ExplorerAgent()
 
-        self.sys_prompt = INSTRUCTION.format(date=datetime.now().strftime("%Y-%m-%d"), tools=self.tools)
+        self.sys_prompt = INSTRUCTION.format(
+            date=datetime.now().strftime("%Y-%m-%d"), tools=self.tools
+        )
         self.conversation_history = conversation_history or []
 
     def _create_tools(self):
@@ -146,6 +149,7 @@ class ChatAgent(BaseAgent):
         Returns:
             List[Tool]: A list of Tool objects available to the agent.
         """
+
         async def search(queries: List[str] = None, query: str = None) -> str:
             """Search tool that accepts both 'queries' and 'query' for flexibility"""
 
@@ -155,19 +159,26 @@ class ChatAgent(BaseAgent):
             elif queries is None:
                 return "Error: No search queries provided"
 
-            results = await self.explorer.run(queries=queries, unique_id=self.unique_id, get_answer=True, max_results=5)
-            
+            results = await self.explorer.run(
+                queries=queries,
+                unique_id=self.unique_id,
+                get_answer=True,
+                max_results=5,
+            )
+
             return "\n\n---\n\n".join(str(results))
 
         return [
             Tool(
                 name="search",
                 description="Search the internet for information. Use this tool when you need current data or facts you don't know. IMPORTANT: Input must be a dictionary with 'queries' key containing a list of search queries. For single searches, pass one query in the list; for multiple searches, pass multiple queries. Examples: Single search: {'queries': ['weather in Paris']} | Multiple searches: {'queries': ['GPT-5 features', 'Gemini 2.5 features']} | Always use 'queries' (plural) not 'query'.",
-                function=search
+                function=search,
             )
         ]
 
-    def _build_messages_array(self, user_prompt: str, state: Dict[str, Any]) -> List[Dict]:
+    def _build_messages_array(
+        self, user_prompt: str, state: Dict[str, Any]
+    ) -> List[Dict]:
         """
         Constructs the list of messages to send to the LLM.
 
@@ -185,27 +196,29 @@ class ChatAgent(BaseAgent):
         Returns:
             List[Dict]: A list of message dictionaries formatted for the LLM.
         """
-        messages = [
-            {"role": "system", "content": self.sys_prompt}
-        ]
-        
+        messages = [{"role": "system", "content": self.sys_prompt}]
+
         # Add conversation history (last 10 messages to manage tokens)
-        recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
-        
+        recent_history = (
+            self.conversation_history[-10:]
+            if len(self.conversation_history) > 10
+            else self.conversation_history
+        )
+
         for msg in recent_history:
             role = msg.get("role")
             content = msg.get("content")
             if role in ["user", "assistant"] and content:
                 messages.append({"role": role, "content": content})
-        
+
         # Build current user prompt with tool results if any
         current_prompt_parts = [f"User Query: {user_prompt}"]
-        
+
         if state.get("tool_results"):
             current_prompt_parts.append("\nTool Results:")
             for tool_name, result in state["tool_results"].items():
                 current_prompt_parts.append(f"\n{tool_name}:\n{result}")
-        
+
         if state.get("history"):
             last_step = state["history"][-1]
             if last_step.get("parsed"):
@@ -214,21 +227,14 @@ class ChatAgent(BaseAgent):
                     current_prompt_parts.append(
                         "\n\nYou indicated you need more info. What do you need next?"
                     )
-        
+
         current_prompt_parts.append("\n\nYour decision (respond in JSON):")
-        
-        messages.append({
-            "role": "user",
-            "content": "\n".join(current_prompt_parts)
-        })
-        
+
+        messages.append({"role": "user", "content": "\n".join(current_prompt_parts)})
+
         return messages
 
-    async def _call_llm_with_messages(
-        self, 
-        messages: List[Dict], 
-        stream: bool = False
-    ):
+    async def _call_llm_with_messages(self, messages: List[Dict], stream: bool = False):
         """
         Calls the LLM with the constructed message array.
 
@@ -250,7 +256,7 @@ class ChatAgent(BaseAgent):
     def _build_prompt(self, user_prompt: str, state: Dict[str, Any]) -> PromptTemplate:
         """
         Legacy method required by BaseAgent but not used in this implementation.
-        
+
         The ChatAgent uses `_build_messages_array` instead to support chat history.
         """
         pass
@@ -278,23 +284,23 @@ class ChatAgent(BaseAgent):
         for iteration in range(self.max_iterations):
             messages = self._build_messages_array(user_prompt, state)
 
-            yield f"\n🤔 **Thinking** (Iteration {iteration + 1})...\n"
-
             # Call LLM (non-streaming for decision)
-            raw_output = await self._call_llm_with_messages(messages=messages, stream=False)
-            
+            raw_output = await self._call_llm_with_messages(
+                messages=messages, stream=False
+            )
+
             try:
                 # Cleaning the raw_output
                 raw_output = raw_output.strip()
 
-                if '<｜begin▁of▁sentence｜>' in raw_output:
-                    raw_output = raw_output.replace('<｜begin▁of▁sentence｜>', '')
+                if "<｜begin▁of▁sentence｜>" in raw_output:
+                    raw_output = raw_output.replace("<｜begin▁of▁sentence｜>", "")
 
-                if '<｜end▁of▁sentence｜>' in raw_output:
-                    raw_output = raw_output.replace('<｜end▁of▁sentence｜>', '')
+                if "<｜end▁of▁sentence｜>" in raw_output:
+                    raw_output = raw_output.replace("<｜end▁of▁sentence｜>", "")
 
                 # Remove any trailing special characters
-                raw_output = raw_output.strip().rstrip('<｜').rstrip('▁')
+                raw_output = raw_output.strip().rstrip("<｜").rstrip("▁")
 
                 # Extract JSON from markdown if present
                 if "```json" in raw_output:
@@ -307,7 +313,7 @@ class ChatAgent(BaseAgent):
                     raw_output = raw_output[json_start:json_end].strip()
             except:
                 pass
-                
+
             # Parse decision
             try:
                 decision = AgentDecision.model_validate_json(raw_output)
@@ -317,77 +323,118 @@ class ChatAgent(BaseAgent):
                     decision_dict = json.loads(raw_output)
                     decision = AgentDecision(**decision_dict)
                 except:
-                    yield f"\n{raw_output}"
-                    yield f"\n❌ **Error**: Could not parse decision\n"
+                    yield json.dumps(
+                        {
+                            "type": "error",
+                            "content": "Could not parse LLM output as JSON",
+                            "error": str(e),
+                        }
+                    ) + "\n"
                     break
 
             # Show thought process
             if decision.thought:
-                yield f"*{decision.thought}*"
+                yield json.dumps(
+                    {"type": "thinking", "content": decision.thought}
+                ) + "\n"
 
             # Handle decision type
             if decision.type == "final":
-                yield f"\n**Answer**:\n{decision.answer}\n"
+                yield json.dumps(
+                    {
+                        "type": "answer",
+                        "content": decision.answer,
+                    }
+                ) + "\n"
                 break
 
             elif decision.type == "tool" and decision.tool_calls:
-                yield f"\n**Using tools**: {[tc.name for tc in decision.tool_calls]}\n"
+                yield json.dumps(
+                    {
+                        "type": "tool_calls_start",
+                        "tools": [tc.name for tc in decision.tool_calls],
+                        "count": len(decision.tool_calls),
+                    }
+                ) + "\n"
                 for tc in decision.tool_calls:
                     tool = next(
                         (t for t in self.config.tools if t.name == tc.name), None
                     )
                     if not tool:
-                        yield f"  ❌ Tool {tc.name} not found\n"
+                        yield json.dumps(
+                            {
+                                "type": "error",
+                                "content": f"Tool {tc.name} not found",
+                            }
+                        ) + "\n"
                         continue
 
                     try:
                         result = await tool.execute(tc.input)
                         state["tool_results"][tc.name] = result
-                        yield f"  ✓ {tc.name} completed\n"
+                        yield json.dumps(
+                            {
+                                "type": "tool_result",
+                                "tool": tc.name,
+                                "content": "completed",
+                            }
+                        ) + "\n"
                     except Exception as e:
                         error_msg = f"Error: {str(e)}"
                         state["tool_results"][tc.name] = error_msg
-                        yield f"  ❌ {tc.name} failed: {error_msg}\n"
+                        yield json.dumps(
+                            {
+                                "type": "tool_result",
+                                "tool": tc.name,
+                                "content": error_msg,
+                            }
+                        ) + "\n"
 
             # If no more information needed
             if not decision.needs_more_info:
                 # Phase 3: Generate final answer with streaming
-                yield f"\n**Generating answer**...\n\n"
 
                 final_messages = [
                     {
-                        "role": "system", 
-                        "content": "You are a helpful AI assistant. Provide a clear, comprehensive answer based on the search results and conversation context. In the end of answer always include source if the data is from search. If no source is given then don't give source at the end."
+                        "role": "system",
+                        "content": "You are a helpful AI assistant. Provide a clear, comprehensive answer based on the search results and conversation context. In the end of answer always include source if the data is from search. If no source is given then don't give source at the end.",
                     }
                 ]
                 # Add conversation history
-                recent_history = self.conversation_history[-10:] if len(self.conversation_history) > 10 else self.conversation_history
+                recent_history = (
+                    self.conversation_history[-10:]
+                    if len(self.conversation_history) > 10
+                    else self.conversation_history
+                )
                 for msg in recent_history:
                     role = msg.get("role")
                     content = msg.get("content")
                     if role in ["user", "assistant"] and content:
                         final_messages.append({"role": role, "content": content})
-                
+
                 # Add current query and tool results
                 final_prompt_parts = [f"User asked: {user_prompt}\n"]
                 final_prompt_parts.append("\nTool Results:")
                 for tool_name, result in state["tool_results"].items():
-                    final_prompt_parts.append(f"\nOutput From {tool_name} Tool: {result}")
-                
+                    final_prompt_parts.append(
+                        f"\nOutput From {tool_name} Tool: {result}"
+                    )
+
                 final_prompt_parts.append(
                     "\n\nProvide a comprehensive answer to the user's question based on these search results and conversation history."
                 )
-                
-                final_messages.append({
-                    "role": "user",
-                    "content": "\n".join(final_prompt_parts)
-                })
+
+                final_messages.append(
+                    {"role": "user", "content": "\n".join(final_prompt_parts)}
+                )
 
                 # Stream the final response
-                response_stream = await self._call_llm_with_messages(final_messages, stream=True)
+                response_stream = await self._call_llm_with_messages(
+                    final_messages, stream=True
+                )
 
                 async for chunk in response_stream:
-                    yield chunk
+                    yield json.dumps({"type": "answer_chunk", "content": chunk}) + "\n"
 
                 break
 
@@ -401,4 +448,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

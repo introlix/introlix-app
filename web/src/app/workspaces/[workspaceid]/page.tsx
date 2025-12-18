@@ -2,6 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { calculateDaysAgo } from "@/lib/utils";
 import { Dot, File, MessageCircle, Microscope, Search } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -130,8 +131,7 @@ export default function WorkspaceDetailPage() {
                                                 <div>
                                                     <CardTitle>{item.title.length > 100 ? item.title.slice(0, 100) + '...' : item.title}</CardTitle>
                                                     <div className="flex text-xs text-muted-foreground items-center">
-                                                        <Dot />
-                                                        <span>{item.created_at}</span>
+                                                        <span>Updated {calculateDaysAgo(item.updated_at) == 0 ? "today" : `${calculateDaysAgo(item.updated_at)} days ago`}</span>
                                                     </div>
                                                 </div>
                                             </CardContent>
