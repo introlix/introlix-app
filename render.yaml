@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: introlix
+    env: python
+    buildCommand: pip install . && playwright install
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
