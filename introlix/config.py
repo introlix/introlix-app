@@ -27,4 +27,4 @@ CLOUD_PROVIDER = "google_ai_studio"  # or "openrouter"
 if CLOUD_PROVIDER == "openrouter":
     AUTO_MODEL = "tngtech/deepseek-r1t2-chimera:free"
 elif CLOUD_PROVIDER == "google_ai_studio":
-    AUTO_MODEL = "gemini-2.5-flash"
+    AUTO_MODEL = "gemini-3-flash-preview"
